@@ -1,8 +1,9 @@
 
-THIRD-PARTY LICENSES
-====================
+THIRD-PARTY SOFTWARE AND LICENSES
+=================================
 
-This project includes third-party software:
+This project includes or uses the following open‑source software packages.
+Each package is licensed by its respective copyright holders.
 
 ----------------------------------------------------------------------
 1. pygfunction (BSD 3-Clause License)
@@ -36,3 +37,39 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
 THE POSSIBILITY OF SUCH DAMAGE.
+
+---------------------------------------------------------------------------
+2. NumPy
+---------------------------------------------------------------------------
+License: BSD 3‑Clause License
+Website: https://numpy.org/
+Copyright (c) 2005-2026, NumPy Developers
+All rights reserved.
+
+---------------------------------------------------------------------------
+3. SciPy
+---------------------------------------------------------------------------
+License: BSD 3‑Clause License
+Website: https://scipy.org/
+Copyright (c) 2001-2026, SciPy Developers
+All rights reserved.
+
+---------------------------------------------------------------------------
+4. Matplotlib
+---------------------------------------------------------------------------
+License: BSD 3‑Clause License
+Website: https://matplotlib.org/
+Copyright (c) 2012-2026, Matplotlib Development Team
+All rights reserved.
+
+---------------------------------------------------------------------------
+5. Python Standard Library
+---------------------------------------------------------------------------
+License: Python Software Foundation License (PSF)
+Website: https://docs.python.org/
+Python © 2001-2026 Python Software Foundation.
+
+---------------------------------------------------------------------------
+This project itself is © 2026, GeoSphereAustria.
+All rights reserved unless otherwise stated.
+---------------------------------------------------------------------------
