@@ -61,7 +61,7 @@ def main():
     # Ground properties
     alpha = 1.0e-6      # Ground thermal diffusivity (m2/s)
     k_s = 2.0           # Ground thermal conductivity (W/m.K)
-    T_g = 10.0          # Undisturbed ground temperature (degC)
+    T_g = 12.0          # Undisturbed ground temperature (degC)
 
     # Grout properties
     k_g = 1.0           # Grout thermal conductivity (W/m.K)
@@ -138,9 +138,7 @@ def main():
     # -------------------------------------------------------------------------
 
     # 1) Calculate T_b (borehole wall temperature)
-    q_b_per_m, m_flow_borehole_ts = synthetic_load_and_flow(
-        time / 3600., max_w_per_m=30.0
-    )
+    q_b_per_m, m_flow_borehole_ts = synthetic_load_and_flow(time / 3600., max_w_per_m=30.0, cp_f=cp_f, H=H)
     Q_tot = nBoreholes * H * q_b_per_m
 
     T_b = simulate_Tb(
@@ -156,7 +154,7 @@ def main():
     # 2) Create mass flow grid and network grid for R_b(m_flow) and T_f calculation
     m_flow_total = m_flow_borehole_ts * nBoreholes
 
-    m_min = float(0)
+    m_min = float(0.01)
     m_max = float(np.nanmax(m_flow_borehole_ts)*1.2)
     m_grid = np.linspace(m_min, m_max, 50)  # 50 grid points
 
@@ -179,6 +177,8 @@ def main():
     # Calculate R_b for R_b vs. m_flow plot
     Rb_grid = compute_Rb_grid_for_plot(m_grid, network_grid, nBoreholes, cp_f)
     R_b_ts = np.interp(m_flow_borehole_ts, m_grid, Rb_grid)
+    # Setze R_b_ts auf NaN, wenn m_flow_borehole_ts <= 0
+    R_b_ts[m_flow_borehole_ts <= 0] = np.nan
     # Optionally plot R_b at unique simulation values if less than 25 unique values
     m_sim_uni = np.unique(m_flow_borehole_ts[(~np.isnan(m_flow_borehole_ts)) & (m_flow_borehole_ts != 0)])
     if len(m_sim_uni) <= 25:
@@ -204,7 +204,7 @@ def main():
         r_in=r_in,
         r_out=r_out,
         n_pipes=n_pipes,
-        out_path=out_dir / "borefield_cross_section.png",
+        out_path=out_dir / "BHE_cross_section.png",
     )
 
     # Input plot (q_b and m_flow)
@@ -315,51 +315,38 @@ def compute_Rb_grid_for_plot(m_grid, network_grid, nBoreholes, cp_f):
             Rb_grid[i] = gt.networks.network_thermal_resistance(net, m_flow_network, cp_f)
     return Rb_grid
 
-
-
-def synthetic_load_and_flow(x, *, max_w_per_m: float = 30.0):
+def synthetic_load_and_flow(x, *, max_w_per_m: float = 30.0, cp_f: float = 4180.0, H: float = 100.0):
     """
     Monthly step load: max extraction in January, max recharge ~6 months later.
+    Analytical mass flow calculation based on target deltaT_target.
 
     Returns:
       - q_b_per_m: load per meter (W/m)
-        (both set to 0 when |q_b_per_m| < 10 W/m)
+      - m_flow_borehole: analytisch für ΔT=4K (kg/s/m)
     """
     hours = np.asarray(x, dtype=float)
     hours_in_year = 24.0 * 365.0
     day_of_year = (hours % hours_in_year) / 24.0
 
-    month_starts = np.array(
-        [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365],
-        dtype=float,
-    )
+    #monthly load factors and deltaT values
+    month_load_factors = np.array([1, 2/3, 1/3, 0, -1/3, -2/3, -1, -2/3, -1/3, 0, 1/3, 2/3], dtype=float)
+    month_deltaT = np.array([2, 3, 4, 0, 4, 3, 2, 3, 4, 0, 4, 3], dtype=float)  # 0 for no flow months
+
+    month_starts = np.array([0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365], dtype=float)
     month_index = np.searchsorted(month_starts[1:], day_of_year, side="right")
 
-    max_w = float(max_w_per_m)
-    ramp1 = np.linspace(max_w, -max_w, 8)
-    ramp2 = np.linspace(-max_w, max_w, 6)
-    monthly_values_per_m = np.concatenate([ramp1, ramp2[1:5]])
+    q_b_per_m = month_load_factors[month_index] * max_w_per_m
 
-    q_b_per_m = monthly_values_per_m[month_index].astype(float)
-
-    abs_q = np.abs(q_b_per_m)
-    min_flow = 0.02
-    max_flow = 0.5
-    q_ref = 10.0
-
-    m_flow_borehole = np.zeros_like(abs_q, dtype=float)
-    if max_w_per_m > q_ref:
-        slope = (max_flow - min_flow) / (max_w_per_m - q_ref)
-        m_flow_borehole = np.where(
-            abs_q >= q_ref,
-            np.clip(min_flow + slope * (abs_q - q_ref), min_flow, max_flow),
-            0.0,
-        )
-
-    q_b_per_m = np.where(abs_q < q_ref, 0.0, q_b_per_m)
+    # calculate m_flow_borehole based on deltaT_target
+    m_flow_borehole = np.zeros_like(q_b_per_m, dtype=float)
+    for i, idx in enumerate(month_index):
+        deltaT = month_deltaT[idx]
+        if deltaT > 0 and q_b_per_m[i] != 0:
+            m_flow_borehole[i] = abs(q_b_per_m[i]) / (cp_f * deltaT) * H
+        else:
+            m_flow_borehole[i] = 0.0
 
     return q_b_per_m, m_flow_borehole
-
 
 def plot_borefield_cross_section(
     *,

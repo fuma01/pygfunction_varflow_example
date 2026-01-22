@@ -75,11 +75,24 @@ Key inputs are defined at the top of `example_varflow.py`:
 - Simulation settings (time step `dt`, total duration `tmax`, aggregation options)
 
 **Synthetic load and flow (`synthetic_load_and_flow`)**  
-The load is a monthly step profile that ramps from maximum extraction to maximum recharge across the year.
-The maximum load is set by the user in watts per borehole meter, and the default is 30 W/m.
-The mass flow per borehole scales with the absolute load: it is zero below 10 W/m, then increases linearly between a minimum and maximum flow up to the specified peak load.
+The load profile was created as an example/test case for demonstration. It is defined by monthly steps:
 
-These inputs control the geometry, thermal response, and the time‑varying load/flow behavior.
+| Month | Load Factor | ΔT (K) |
+|-------|-------------|--------|
+|   1   |   max_load  |   2    |
+|   2   |   2/3       |   3    |
+|   3   |   1/3       |   4    |
+|   4   |   0         |   0    |
+|   5   |  -1/3       |   4    |
+|   6   |  -2/3       |   3    |
+|   7   |  -max_load  |   2    |
+|   8   |  -2/3       |   3    |
+|   9   |  -1/3       |   4    |
+|  10   |   0         |   0    |
+|  11   |   1/3       |   4    |
+|  12   |   2/3       |   3    |
+
+For each month, the mass flow per borehole is calculated analytically so that the temperature difference ΔT matches the table above for the given load. If the load is zero, the mass flow is set to zero.
 
 ## Outputs
 
