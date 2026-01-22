@@ -1,6 +1,6 @@
 # Example: Variable Mass Flow Borefield Simulation
 
-This example (`example_varflow.py`) simulates a geothermal borefield with a time‑varying load and a mass flow rate that depends on the load. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function.
+This example (`example_varflow.py`) simulates a geothermal borefield with a time‑varying load and a mass flow rate. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function.
 
 ## Key Idea: g‑Function Independent of Material Parameters and Mass Flow
 
