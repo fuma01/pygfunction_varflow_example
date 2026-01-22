@@ -3,35 +3,33 @@
     Editor: martin.fuchsluger@geosphere.at
     Date: 2026-01-17
 
-    This script simulates a geothermal borefield with a time‑varying load and a
-    variable mass flow rate. It computes a geometry‑only
-    g‑function on Eskilson time and uses the Claesson–Javed load aggregation
+    This script simulates a geothermal borefield with time-varying load and mass flow rate using pygfunction.
+    It computes a geometry-only g-function (Eskilson time) and uses the Claesson–Javed load aggregation
     method to obtain the borehole wall temperature from the load per meter.
 
-    Ground thermal properties only shift the mapping between real time and
-    Eskilson time via alpha; the g‑function curve itself is unchanged. The
-    borehole thermal resistance R_b is precomputed on a mass‑flow grid using the
-    pygfunction network model and then interpolated during the time simulation.
+    The borehole thermal resistance R_b is precomputed on a mass flow grid using the pygfunction network model
+    and then interpolated during the time simulation. Fluid temperatures are calculated using a grid of network
+    objects, fully accounting for the m_flow dependency.
 
-    Outputs include temperature histories, load/flow inputs, R_b vs. mass flow,
-    the Eskilson g‑function, and borefield layout/cross‑section plots.
+    Outputs include temperature histories, load/flow inputs, R_b vs. mass flow, the Eskilson g-function,
+    and borefield layout/cross-section plots.
 
-    Key idea: g‑function is geometry‑based (Eskilson time), T_b uses only load
-    aggregation + g‑function (no R_b, no m_flow), and R_b(m_flow) is computed
-    once on a grid and interpolated in time.
+    Key points:
+    - The g-function is geometry-based (Eskilson time), independent of R_b and m_flow.
+    - T_b is computed using load aggregation and the g-function.
+    - R_b(m_flow) is precomputed on a grid and interpolated in time.
+    - Fluid temperatures are calculated using a network grid for full m_flow dependency.
 """
-
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.signal import fftconvolve
-
 from pathlib import Path
-
 import pygfunction as gt
-
+import time as tt
 
 def main():
+    t_start = tt.perf_counter()
     # -------------------------------------------------------------------------
     # Simulation parameters
     # Editor: martin.fuchsluger@geosphere.at | Date: 2026-01-17
@@ -45,7 +43,7 @@ def main():
     H = 150.0           # Borehole length (m)
     r_b = 0.075         # Borehole radius (m)
 
-    # Bore field geometry (rectangular array 4 x 8)
+    # Bore field geometry
     N_1 = 2             # Number of boreholes in x-direction (columns)
     N_2 = 4             # Number of boreholes in y-direction (rows)
     B = 7.5             # Borehole spacing (m)
@@ -57,6 +55,7 @@ def main():
     epsilon = 1.0e-6    # Pipe roughness (m)
 
     # Pipe positions (Double U-tube)
+    n_pipes = 2
     pos = [(-D_s, 0.), (0., -D_s), (D_s, 0.), (0., D_s)]
 
     # Ground properties
@@ -71,7 +70,6 @@ def main():
     k_p = 0.4           # Pipe thermal conductivity (W/m.K)
 
     # Fluid properties
-    m_flow_borehole = 0.25      # kg/s per borehole (nominal for pipe resistance)
     fluid = gt.media.Fluid('MEA', 12.)
     cp_f = fluid.cp
     rho_f = fluid.rho
@@ -98,31 +96,13 @@ def main():
     borefield = gt.borefield.Borefield.rectangle_field(N_1, N_2, B, B, H, D, r_b)
     nBoreholes = len(borefield)
     
-    # Cross-section plot (MultipleUTube)
-    plot_borefield_cross_section(
-        borefield=borefield,
-        pos=pos,
-        r_in=r_in,
-        r_out=r_out,
-        k_s=k_s,
-        k_g=k_g,
-        k_p=k_p,
-        m_flow_borehole=m_flow_borehole,
-        mu_f=mu_f,
-        rho_f=rho_f,
-        k_f=k_f,
-        cp_f=cp_f,
-        epsilon=epsilon,
-        out_path=out_dir / "borefield_cross_section.png",
-    )
-
     # -------------------------------------------------------------------------
     # Calculate g-function on a fixed t_eskilson grid (independent of alpha)
     # -------------------------------------------------------------------------
 
     # Bounds for alpha from ks_min/max and cv_min/max
-    ks_min, ks_max = 1.0, 4.0          # W/mK
-    cv_min, cv_max = 1.0, 4.0          # MJ/m3/K
+    ks_min, ks_max = 1.0, 4.0          # Ground conductivity bounds [W/mK]
+    cv_min, cv_max = 1.0, 4.0          # Volumetric heat capacity bounds [MJ/m3/K]
 
     alpha_min = ks_min / (cv_max * 1.0e6)
     alpha_max = ks_max / (cv_min * 1.0e6)
@@ -150,19 +130,14 @@ def main():
     g_needed = g_of_eskilson(t_eskilson_req)
     LoadAgg.initialize(g_needed / (2 * np.pi * k_s))
 
-    # Plot g-function vs. Eskilson-Zeit
-    plot_g_function(
-        t_eskilson_grid=t_eskilson_grid,
-        g_func=gFunc.gFunc,
-        t_eskilson_req=t_eskilson_req,
-        out_path=out_dir / "g_function_eskilson.png",
-    )
+    t1 = tt.perf_counter()
+    print(f"[Runtime] section 1: setup gfunction: {t1 - t_start:.2f} s")
 
     # -------------------------------------------------------------------------
     # Simulation
     # -------------------------------------------------------------------------
 
-    # 1) Variablen für T_b
+    # 1) Calculate T_b (borehole wall temperature)
     q_b_per_m, m_flow_borehole_ts = synthetic_load_and_flow(
         time / 3600., max_w_per_m=30.0
     )
@@ -175,63 +150,62 @@ def main():
         T_g=T_g,
     )
 
-    # 2) Variablen für m_flow / R_b (Network nur auf Raster)
+    t2 = tt.perf_counter()
+    print(f"[Runtime] section 2: calc T_b: {t2 - t1:.2f} s")
+
+    # 2) Create mass flow grid and network grid for R_b(m_flow) and T_f calculation
     m_flow_total = m_flow_borehole_ts * nBoreholes
 
-    m_min = float(np.nanmin(m_flow_borehole_ts))
-    m_max = float(np.nanmax(m_flow_borehole_ts))
-    m_grid = np.linspace(m_min, m_max, 50)  # 50 Punkte
+    m_min = float(0)
+    m_max = float(np.nanmax(m_flow_borehole_ts)*1.2)
+    m_grid = np.linspace(m_min, m_max, 50)  # 50 grid points
 
-    Rb_grid = compute_Rb_grid_with_network(
-        m_grid=m_grid,
-        borefield=borefield,
-        pos=pos,
-        r_in=r_in,
-        r_out=r_out,
-        k_p=k_p,
-        k_s=k_s,
-        k_g=k_g,
-        epsilon=epsilon,
-        mu_f=mu_f,
-        rho_f=rho_f,
-        k_f=k_f,
-        cp_f=cp_f,
-        n_pipes=2,
-        config="parallel",
+    network_grid = build_network_grid(
+        m_grid, borefield, pos, r_in, r_out, k_p, k_s, k_g, epsilon, mu_f, rho_f, k_f, cp_f, n_pipes=n_pipes, config="parallel"
     )
-
-    R_b_ts = np.interp(m_flow_borehole_ts, m_grid, Rb_grid)
-
-    # 3) T_f berechnen
-    T_f_in, T_f_out = compute_fluid_temperatures(
-        Q_tot=Q_tot,
-        T_b=T_b,
-        m_flow=m_flow_total,
-        cp_f=cp_f,
-        divider=nBoreholes * H,
-        Rb_field=R_b_ts,
+    t3 = tt.perf_counter()
+    print(f"[Runtime] section 3: build network grid: {t3 - t2:.2f} s")
+    
+    # 3) Calculate fluid temperatures using the network grid
+    T_f_in, T_f_out = compute_fluid_temperatures_with_network_grid(
+        Q_tot, T_b, m_flow_total, m_flow_borehole_ts, m_grid, network_grid, cp_f
     )
-
-    # -------------------------------------------------------------------------
-    # Calculate exact solution from convolution in the Fourier domain
-    # -------------------------------------------------------------------------
-
-    Q_b = H * q_b_per_m
-    dQ = np.zeros(Nt)
-    dQ[0] = Q_b[0]
-    dQ[1:] = Q_b[1:] - Q_b[:-1]
-
-    t_eskilson_time = alpha * np.asarray(time) / (r_b**2)
-    g = g_of_eskilson(t_eskilson_time)
-
-    T_b_exact = T_g - fftconvolve(
-        dQ, g / (2.0 * np.pi * k_s * H), mode='full')[0:Nt]
+    t4 = tt.perf_counter()
+    print(f"[Runtime] section 4: compute fluid temps: {t4 - t3:.2f} s")
 
     # -------------------------------------------------------------------------
     # plot results
     # -------------------------------------------------------------------------
+    # Calculate R_b for R_b vs. m_flow plot
+    Rb_grid = compute_Rb_grid_for_plot(m_grid, network_grid, nBoreholes, cp_f)
+    R_b_ts = np.interp(m_flow_borehole_ts, m_grid, Rb_grid)
+    # Optionally plot R_b at unique simulation values if less than 25 unique values
+    m_sim_uni = np.unique(m_flow_borehole_ts[(~np.isnan(m_flow_borehole_ts)) & (m_flow_borehole_ts != 0)])
+    if len(m_sim_uni) <= 25:
+        Rb_sim = np.interp(m_sim_uni, m_grid, Rb_grid)
+    else:
+        Rb_sim = np.array([])
 
+    # time for plots
     hours = np.arange(1, Nt+1) * dt / 3600.
+
+    # Plot g-function vs. Eskilson-Zeit
+    plot_g_function(
+        t_eskilson_grid=t_eskilson_grid,
+        g_func=gFunc.gFunc,
+        t_eskilson_req=t_eskilson_req,
+        out_path=out_dir / "g_function_eskilson.png",
+    )
+    
+    # Cross-section plot (MultipleUTube)
+    plot_borefield_cross_section(
+        borefield=borefield,
+        pos=pos,
+        r_in=r_in,
+        r_out=r_out,
+        n_pipes=n_pipes,
+        out_path=out_dir / "borefield_cross_section.png",
+    )
 
     # Input plot (q_b and m_flow)
     plot_input(
@@ -251,17 +225,26 @@ def main():
         out_path=out_dir / "example_varflow_results.png",
     )
     
-    # Plot R_b vs m_flow (per borehole) + Reynolds-Zahl auf 2. y-Achse
+    # Plot R_b vs m_flow (per borehole) and indicate laminar/turbulent transition
     plot_rb_vs_mflow(
         m_grid=m_grid,
         Rb_grid=Rb_grid,
+        m_sim=m_sim_uni,
+        Rb_sim=Rb_sim,
         r_in=r_in,
         mu_f=mu_f,
+        n_pipes=n_pipes,
         out_path=out_dir / "Rb_vs_mflow.png",
     )
 
+    t5 = tt.perf_counter()
+    print(f"[Runtime] section 5: plotting: {t5 - t4:.2f} s")
+    print(f"[Total Runtime] {t5 - t_start:.2f} s")
+    return
 
-
+# -------------------------------------------------------------------------
+# Definitions
+# -------------------------------------------------------------------------
 def simulate_Tb(*, time, q_b_per_m, LoadAgg, T_g):
     """
     Time loop for borehole wall temperature T_b.
@@ -277,41 +260,21 @@ def simulate_Tb(*, time, q_b_per_m, LoadAgg, T_g):
 
     return T_b
 
-
-def compute_Rb_grid_with_network(
-    *,
-    m_grid: np.ndarray,
-    borefield,
-    pos,
-    r_in: float,
-    r_out: float,
-    k_p: float,
-    k_s: float,
-    k_g: float,
-    epsilon: float,
-    mu_f: float,
-    rho_f: float,
-    k_f: float,
-    cp_f: float,
-    n_pipes: int = 2,
-    config: str = "parallel",
-) -> np.ndarray:
-    m_grid = np.asarray(m_grid, dtype=float)
-    R_p = gt.pipes.conduction_thermal_resistance_circular_pipe(r_in, r_out, k_p)
-    n_bh = len(borefield)
-
-    Rb_grid = np.full_like(m_grid, np.nan, dtype=float)
-    for i, m_bh in enumerate(m_grid):
+def build_network_grid(
+    m_grid, borefield, pos, r_in, r_out, k_p, k_s, k_g, epsilon, mu_f, rho_f, k_f, cp_f, n_pipes=2, config="parallel"
+):
+    network_grid = []
+    for m_bh in m_grid:
         if not np.isfinite(m_bh) or m_bh <= 0:
+            network_grid.append(None)
             continue
-
-        m_flow_pipe = m_bh / float(n_pipes)
+        m_flow_pipe = m_bh / n_pipes
         h_f = gt.pipes.convective_heat_transfer_coefficient_circular_pipe(
             m_flow_pipe, r_in, mu_f, rho_f, k_f, cp_f, epsilon
         )
         R_f = 1.0 / (h_f * 2.0 * np.pi * r_in)
+        R_p = gt.pipes.conduction_thermal_resistance_circular_pipe(r_in, r_out, k_p)
         R_fp = R_f + R_p
-
         UTubes = [
             gt.pipes.MultipleUTube(
                 pos, r_in, r_out, borehole, k_s, k_g, R_fp,
@@ -319,40 +282,39 @@ def compute_Rb_grid_with_network(
             )
             for borehole in borefield
         ]
-        network = gt.networks.Network(borefield, UTubes)
+        network_grid.append(gt.networks.Network(borefield, UTubes))
+    return network_grid
 
-        m_flow_network = m_bh * n_bh
-        Rb_grid[i] = gt.networks.network_thermal_resistance(network, m_flow_network, cp_f)
-
-    return Rb_grid
-
-
-def compute_fluid_temperatures(
-    *,
-    Q_tot: np.ndarray,
-    T_b: np.ndarray,
-    m_flow: np.ndarray,
-    cp_f: float,
-    divider: float,
-    Rb_field: np.ndarray,
+def compute_fluid_temperatures_with_network_grid(
+    Q_tot, T_b, m_flow_total, m_flow_borehole_ts, m_grid, network_grid, cp_f
 ):
     T_f_in = T_b.copy()
     T_f_out = T_b.copy()
-
-    mask = m_flow > 0
-    if np.any(mask):
-        Rb_use = np.asarray(Rb_field)
-        if Rb_use.ndim == 0:
-            Rb_use = float(Rb_use)
+    mask = m_flow_total > 0
+    for i in np.where(mask)[0]:
+        idx = np.abs(m_grid - m_flow_borehole_ts[i]).argmin()
+        network = network_grid[idx]
+        if network is not None:
+            m_flow_network_i = float(m_flow_total[i])
+            T_f_in[i] = network.get_network_inlet_temperature(
+                Q_tot[i], T_b[i], m_flow_network_i, cp_f, nSegments=8
+            )
+            T_f_out[i] = network.get_network_outlet_temperature(
+                T_f_in[i], T_b[i], m_flow_network_i, cp_f, nSegments=8
+            )
         else:
-            Rb_use = Rb_use[mask]
-
-        T_f_in[mask] = (-Q_tot[mask] / 2.0 / m_flow[mask] / cp_f) + (
-            -Q_tot[mask] / divider * Rb_use
-        ) + T_b[mask]
-        T_f_out[mask] = 2.0 * (-Q_tot[mask] / divider * Rb_use + T_b[mask]) - T_f_in[mask]
-
+            T_f_in[i] = T_b[i]
+            T_f_out[i] = T_b[i]
     return T_f_in, T_f_out
+
+def compute_Rb_grid_for_plot(m_grid, network_grid, nBoreholes, cp_f):
+    Rb_grid = np.full_like(m_grid, np.nan, dtype=float)
+    for i, net in enumerate(network_grid):
+        if net is not None:
+            m_flow_network = m_grid[i] * nBoreholes
+            Rb_grid[i] = gt.networks.network_thermal_resistance(net, m_flow_network, cp_f)
+    return Rb_grid
+
 
 
 def synthetic_load_and_flow(x, *, max_w_per_m: float = 30.0):
@@ -381,7 +343,7 @@ def synthetic_load_and_flow(x, *, max_w_per_m: float = 30.0):
     q_b_per_m = monthly_values_per_m[month_index].astype(float)
 
     abs_q = np.abs(q_b_per_m)
-    min_flow = 0.1
+    min_flow = 0.02
     max_flow = 0.5
     q_ref = 10.0
 
@@ -398,37 +360,28 @@ def synthetic_load_and_flow(x, *, max_w_per_m: float = 30.0):
 
     return q_b_per_m, m_flow_borehole
 
+
 def plot_borefield_cross_section(
     *,
     borefield,
     pos,
     r_in: float,
     r_out: float,
-    k_s: float,
-    k_g: float,
-    k_p: float,
-    m_flow_borehole: float,
-    mu_f: float,
-    rho_f: float,
-    k_f: float,
-    cp_f: float,
-    epsilon: float,
+    n_pipes: int,
     out_path: Path,
 ):
+    """
+    Plot the cross-section of the borefield and a sample MultipleUTube geometry.
+    Only geometry is visualized; no flow- or material-dependent properties are shown.
+    """
     fig_cs, ax_cs = plt.subplots(1, 1, figsize=(6, 6))
 
     sample_borehole = borefield[0]
-    m_flow_pipe = m_flow_borehole / 2.0
-    h_f = gt.pipes.convective_heat_transfer_coefficient_circular_pipe(
-        m_flow_pipe, r_in, mu_f, rho_f, k_f, cp_f, epsilon
-    )
-    R_f = 1.0 / (h_f * 2.0 * np.pi * r_in)
-    R_p = gt.pipes.conduction_thermal_resistance_circular_pipe(r_in, r_out, k_p)
-    R_fp = R_f + R_p
-
+    # Use a representative R_fp for visualization (dummy value, e.g. 0.01)
+    R_fp = 0.01
     u_tube = gt.pipes.MultipleUTube(
-        pos, r_in, r_out, sample_borehole, k_s, k_g, R_fp,
-        nPipes=2, config="parallel"
+        pos, r_in, r_out, sample_borehole, 1.0, 1.0, R_fp,
+        nPipes=n_pipes, config="parallel"
     )
     u_tube.visualize_pipes()
 
@@ -450,6 +403,7 @@ def plot_borefield_cross_section(
     out_field = out_path.with_name("borefield_layout.png")
     plt.savefig(out_field, dpi=150)
     plt.close(fig_field)
+
 
 
 def plot_g_function(*, t_eskilson_grid, g_func, t_eskilson_req, out_path: Path):
@@ -522,21 +476,33 @@ def plot_results(*, hours, T_b, R_b_ts, T_f_in, T_f_out, out_path: Path):
     plt.savefig(out_path, dpi=150)
     plt.close(fig_res)
 
+def m_flow_transition_per_borehole(Re_crit, r_in, mu_f, n_pipes):
+    """
+    Berechnet den kritischen Massenstrom pro Bohrloch für den Übergang laminar/turbulent.
+    Gilt für beliebige n_pipes (z.B. Single-U: 2, Double-U: 4).
+    """
+    D_h = 2.0 * r_in
+    # Kritischer Massenstrom pro Rohr
+    m_dot_pipe = Re_crit * mu_f * (np.pi * D_h) / 4.0
+    # Gesamtmassenstrom pro Bohrloch
+    m_dot_borehole = m_dot_pipe * n_pipes
+    return m_dot_borehole
 
-def plot_rb_vs_mflow(*, m_grid, Rb_grid, r_in: float, mu_f: float, out_path: Path):
+def plot_rb_vs_mflow(*, m_grid, Rb_grid, m_sim, Rb_sim, r_in: float, mu_f: float, n_pipes: int, out_path: Path):
+    import matplotlib.pyplot as plt
     fig_rb, ax_rb = plt.subplots(1, 1, figsize=(9, 4))
 
-    ax_rb.plot(m_grid, Rb_grid, marker="o", linestyle="-", label=r"$R_b$")
+    ax_rb.plot(m_grid, Rb_grid, linestyle="-", color="tab:blue", label=r"$R_b$ (Grid)")
 
-    D_h = 2.0 * r_in
-    m_flow_pipe_transition = 2300.0 * np.pi * D_h * mu_f / 4.0
-    m_flow_bh_transition = m_flow_pipe_transition * 2.0
+    # Nur plotten, wenn weniger als 25 unique Werte
+    if len(m_sim) < 25:
+        ax_rb.plot(m_sim, Rb_sim, "o", color="tab:orange", label=r"$R_b$ (Simulation)")
 
-    ax_rb.axvspan(m_grid.min(), min(m_flow_bh_transition, m_grid.max()),
-                  color="tab:blue", alpha=0.08, label="Laminar (Re < 2300)")
-    if m_flow_bh_transition < m_grid.max():
-        ax_rb.axvspan(m_flow_bh_transition, m_grid.max(),
-                      color="tab:orange", alpha=0.08, label="Turbulent (Re > 2300)")
+    m_flow_bh_transition = m_flow_transition_per_borehole(2300, r_in, mu_f, n_pipes)
+    m_min = float(np.nanmin(m_sim))
+    m_max = float(np.nanmax(m_sim))
+    ax_rb.axvspan(m_min, m_max, color="tab:green", alpha=0.15, label="simulation area")
+    ax_rb.axvline(m_flow_bh_transition, color="tab:red", linestyle="--", label="laminar/turbulent (Re=2300)")
 
     ax_rb.set_xlabel(r'$\dot{m}$ [kg/s] (pro Bohrloch)')
     ax_rb.set_ylabel(r'$R_b$ [K/W]')
