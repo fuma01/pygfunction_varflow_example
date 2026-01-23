@@ -44,6 +44,9 @@
       "k_g": "W/mK",
         "power_start": "W/m",
         "m_flow_start": "kg/s"
+    },
+    "run": {
+      "measurement_begin": "YYYY-MM-DD"
     }
   },
   "outputs": {
