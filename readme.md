@@ -65,14 +65,17 @@ This keeps the transient simulation fast and avoids recomputing the network mode
 
 ## Inputs
 
-Key inputs are defined at the top of `example_varflow.py`:
+Inputs are defined in JSON files under `inputs/`:
 
-- Borefield geometry (`N_1`, `N_2`, `B`, `H`, `D`, `r_b`)
-- Ground properties (`k_s`, `alpha`, `T_g`) and grout/pipe properties (`k_g`, `k_p`, `r_in`, `r_out`)
-- Fluid properties (`cp_f`, `rho_f`, `mu_f`, `k_f`)
-- Number of U-tubes per borehole (`n_pipes`)
-- Load profile and mass‑flow rule from `synthetic_load_and_flow`
-- Simulation settings (time step `dt`, total duration `tmax`, aggregation options)
+- `common.json`: shared `geometry` and `fluid`
+- `varflow.json`: `ground`, `varflow`, `outputs.varflow`
+- `opti.json`: `opti`, `run`, `outputs.opti`, `outputs.sensitivity`
+
+Both scripts use `inputs/common.json` plus their specific config.
+
+Units: `cv_s` is specified in MJ/m³/K in `inputs/opti.json` and converted internally to J/m³/K.
+
+Note: `inputs/config.json` is deprecated and removed. Use `inputs/common.json` + `inputs/varflow.json` or `inputs/opti.json`.
 
 **Synthetic load and flow (`synthetic_load_and_flow`)**  
 The load profile was created as an example/test case for demonstration. It is defined by monthly steps:
@@ -96,7 +99,13 @@ For each month, the mass flow per borehole is calculated analytically so that th
 
 ## Outputs
 
-Plots are written to the `outputs/` directory (relative to the script):
+Outputs are organized into subfolders (relative to the repo root):
+
+- `outputs/varflow`: simulation plots and measurements
+- `outputs/opti`: optimization results
+- `outputs/sensitivity`: sensitivity sweep outputs
+
+Plots from `example_varflow.py` are written to `outputs/varflow`:
 
 - `borefield_cross_section.png` (geometry only, no flow/material dependency)
 - `borefield_layout.png`
@@ -107,12 +116,12 @@ Plots are written to the `outputs/` directory (relative to the script):
 
 ### Optimization Example (`example_opti.py`)
 
-`example_opti.py` loads the synthetic measurements from `outputs/varflow_measurements.csv` and estimates
+`example_opti.py` loads the synthetic measurements from `outputs/varflow/varflow_measurements.csv` and estimates
 the parameters $T_s$, $k_s$, $c_{v,s}$, $k_g$, and optionally `power_start` to match the measured
 outlet temperature. The optimization uses a penalty term to discourage large deviations from the
 provided start values.
 
-Outputs:
+Outputs (in `outputs/opti`):
 - `example_opti_fit.csv` (measured vs. simulated $T_{f,out}$ and residuals)
 - `example_opti_fit.png` (comparison plot)
 - `example_opti_params.txt` (best-fit parameters)

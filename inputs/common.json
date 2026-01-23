@@ -1,0 +1,47 @@
+{
+  "geometry": {
+    "D": 4.0,
+    "H": 150.0,
+    "r_b": 0.075,
+    "N_1": 2,
+    "N_2": 4,
+    "B": 7.5,
+    "r_out": 0.016,
+    "r_in": 0.014,
+    "D_s": 0.04,
+    "n_pipes": 2
+  },
+  "fluid": {
+    "fluid_name": "MEA",
+    "fluid_temp": 12.0
+  },
+  "common_material": {
+    "k_p": 0.4,
+    "epsilon": 1.0e-6
+  },
+  "dates": {
+    "simulation_start": "2020-01-01"
+  },
+  "units": {
+    "geometry": {
+      "D": "m",
+      "H": "m",
+      "r_b": "m",
+      "B": "m",
+      "r_out": "m",
+      "r_in": "m",
+      "D_s": "m",
+      "epsilon": "m"
+    },
+    "fluid": {
+      "fluid_temp": "degC"
+    },
+    "common_material": {
+      "k_p": "W/mK",
+      "epsilon": "m"
+    },
+    "dates": {
+      "simulation_start": "YYYY-MM-DD"
+    }
+  }
+}

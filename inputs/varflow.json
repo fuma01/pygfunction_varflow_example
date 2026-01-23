@@ -1,0 +1,29 @@
+{
+  "ground": {
+    "alpha": 1.0e-6,
+    "k_s": 2.0,
+    "T_g": 12.0,
+    "k_g": 1.0
+  },
+  "varflow": {
+    "dt_hours": 1.0,
+    "tmax_years": 2.0,
+    "max_w_per_m": 30.0
+  },
+  "units": {
+    "ground": {
+      "alpha": "m²/s",
+      "k_s": "W/mK",
+      "T_g": "degC",
+      "k_g": "W/mK"
+    },
+    "varflow": {
+      "dt_hours": "h",
+      "tmax_years": "yr",
+      "max_w_per_m": "W/m"
+    }
+  },
+  "outputs": {
+    "varflow": "outputs/varflow"
+  }
+}
