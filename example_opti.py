@@ -491,7 +491,7 @@ def objective_factory(
 
         penalty = 0.0
         for name, step in steps.items():
-            if name == "power_start" and not optimize_power_start:
+            if name == "power_start":
                 continue
             penalty += ((locals()[name] - starts[name]) / step) ** 2
         loss = mse + penalty_weight * penalty
@@ -653,7 +653,16 @@ def main():
     starts["cv_s"] = float(starts["cv_s"]) * 1.0e6
     bounds["cv_s"] = (float(bounds["cv_s"][0]) * 1.0e6, float(bounds["cv_s"][1]) * 1.0e6)
     steps["cv_s"] = float(steps["cv_s"]) * 1.0e6
-    penalty_weight = 0.0
+    penalty_weight = float(opti_cfg.get("penalty_weight", 1.0)) if penalty else 0.0
+    print(f"[Penalty] enabled={bool(penalty)} | weight={penalty_weight}")
+
+    def snap_value(value: float, name: str) -> float:
+        if name not in bounds or name not in steps:
+            return float(value)
+        low, high = bounds[name]
+        step = steps[name]
+        value = float(np.clip(value, low, high))
+        return round(value / step) * step
 
     m_min_meas = float(np.nanmin(m_flow_borehole_ts[m_flow_borehole_ts > 0]))
     m_max_meas = float(np.nanmax(m_flow_borehole_ts))
@@ -770,7 +779,7 @@ def main():
             bounds=[bounds["power_start"]],
             options={"maxiter": max_iter, "disp": True},
         )
-        starts["power_start"] = float(result_stage1.x[0])
+        starts["power_start"] = snap_value(float(result_stage1.x[0]), "power_start")
         optimize_power_start = False
         print(f"[Stage 1] power_start optimized (Powell): {starts['power_start']:.6g} W/m")
 
@@ -840,6 +849,8 @@ def main():
     print(f"[Runtime] section 4: total optimize: {t4 - t3:.2f} s")
 
     fitted = dict(zip(names, result.x))
+    for name in list(fitted.keys()):
+        fitted[name] = snap_value(fitted[name], name)
     summary_path = output_dir / "example_opti_fit.csv"
 
     if optimize_power_start:
@@ -933,7 +944,7 @@ def main():
         handle.write(f"Success: {result.success}\n")
         handle.write(f"Message: {result.message}\n")
         handle.write(f"Iterations (nit): {getattr(result, 'nit', 'n/a')}\n")
-        handle.write(f"Evaluations (nfev): {getattr(result, 'nfev', 'n/a')}\n")
+        handle.write(f"Evaluations (nfev): {last_eval.get('nfev', getattr(result, 'nfev', 'n/a'))}\n")
         handle.write(f"Final loss: {getattr(result, 'fun', 'n/a')}\n")
         handle.write(f"Penalty weight: {penalty_weight}\n")
         handle.write(f"Optimize power_start: {optimize_power_start}\n")

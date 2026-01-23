@@ -20,7 +20,7 @@
       "k_s": 0.1,
       "cv_s": 0.2,
       "k_g": 0.1,
-      "power_start": 2.0
+      "power_start": 1.0
     },
     "penalty_weight": 1.0
   },
@@ -31,7 +31,7 @@
     "measurement_begin": "2020-05-01",
     "max_iter": 5,
     "optimize_power_start": true,
-    "penalty": false,
+    "penalty": true,
     "sensitivity_sweep": false,
     "sweep_points": 9,
     "sweep_2d": false,

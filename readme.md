@@ -1,8 +1,20 @@
-# Example: Variable Mass Flow Borefield Simulation
+# Examples: Variable Mass Flow Simulation + Parameter Optimization
 
-This example (`example_varflow.py`) simulates a geothermal borefield with a time‑varying load and a mass flow rate. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function.
+This repository contains **two examples**:
 
-## Key Idea: g‑Function Independent of Material Parameters and Mass Flow
+1. **`example_varflow.py`** — a compact demonstration of g‑function independence (geometry‑only) and the use of **variable mass flow**.
+	Its output is a set of **synthetic measurements** used as input for the optimization example.
+2. **`example_opti.py`** — a parameter estimation workflow that fits simulated outlet temperatures to the synthetic measurements.
+
+Below you will find a **short overview**, then a **detailed description of `example_varflow.py`**, followed by a **detailed description of `example_opti.py`** (including the optimization strategy).
+
+## Example 1 (Overview): `example_varflow.py`
+
+`example_varflow.py` simulates a geothermal borefield with a time‑varying load and a variable mass flow rate. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function. The script writes **synthetic measurements** that are used by `example_opti.py`.
+
+## Example 1 (Details): `example_varflow.py`
+
+### Key Idea: g‑Function Independent of Material Parameters and Mass Flow
 
 The g‑function is expressed using the Eskilson time:
 
@@ -25,7 +37,7 @@ It only shifts the mapping between real time and Eskilson time: higher $\alpha$ 
 
 ### Eskilson Time Grid Range
 
-The grid is built to cover 1 hour to 100 years for all plausible ground properties:
+The grid is built to cover 1 hour to 100 years for the following ground properties range:
 
 - $k_s$: 1–4 W/mK  
 - $c_v$: 1–4 MJ/m³K  
@@ -39,7 +51,7 @@ $$
 
 This ensures the g‑function is valid for any material parameter choice within the range.
 
-## Borehole Wall Temperature ($T_b$) Does NOT Use $R_b$ or $m_\mathrm{flow}$
+### Borehole Wall Temperature ($T_b$) Does NOT Use $R_b$ or $m_\mathrm{flow}$
 
 The borehole wall temperature is computed only from:
 - the load per meter $q_b$  
@@ -48,7 +60,7 @@ The borehole wall temperature is computed only from:
 
 $R_b$ and mass flow are not required to compute $T_b$.
 
-## Borehole Resistance ($R_b$) vs. Mass Flow
+### Borehole Resistance ($R_b$) vs. Mass Flow
 
 The dependence of $R_b$ on mass flow is handled outside the time loop:
 
@@ -58,7 +70,7 @@ The dependence of $R_b$ on mass flow is handled outside the time loop:
 
 This keeps the transient simulation fast and avoids recomputing the network model each time step.
 
-## Network Grid and Fluid Temperatures
+### Network Grid and Fluid Temperatures
 
 - A grid of network objects is built for all relevant mass flow rates using the current geometry and fluid properties.
 - Fluid temperatures ($T_{f,\mathrm{in}}$, $T_{f,\mathrm{out}}$) are computed for each time step by interpolating the network grid according to the current mass flow.
@@ -75,7 +87,6 @@ Both scripts use `inputs/common.json` plus their specific config.
 
 Units: `cv_s` is specified in MJ/m³/K in `inputs/opti.json` and converted internally to J/m³/K.
 
-Note: `inputs/config.json` is deprecated and removed. Use `inputs/common.json` + `inputs/varflow.json` or `inputs/opti.json`.
 
 **Synthetic load and flow (`synthetic_load_and_flow`)**  
 The load profile was created as an example/test case for demonstration. It is defined by monthly steps:
@@ -95,7 +106,7 @@ The load profile was created as an example/test case for demonstration. It is de
 |  11   |   1/3       |   4    |
 |  12   |   2/3       |   3    |
 
-For each month, the mass flow per borehole is calculated analytically so that the temperature difference ΔT matches the table above for the given load. If the load is zero, the mass flow is set to zero.
+For each month, the mass flow per borehole is calculated analytically so that the temperature difference ΔT matches the table above for the given load. If the load is zero, the mass flow is set to zero and the fluid temperatures (inlet and outlet) are, by definition, set to $T_b$.
 
 ## Outputs
 
@@ -114,17 +125,29 @@ Plots from `example_varflow.py` are written to `outputs/varflow`:
 - `example_varflow_results.png`
 - `Rb_vs_mflow.png`
 
-### Optimization Example (`example_opti.py`)
+## Example 2 (Details): `example_opti.py`
 
 `example_opti.py` loads the synthetic measurements from `outputs/varflow/varflow_measurements.csv` and estimates
-the parameters $T_s$, $k_s$, $c_{v,s}$, $k_g$, and optionally `power_start` to match the measured
-outlet temperature. The optimization uses a penalty term to discourage large deviations from the
-provided start values.
+the parameters $T_g$, $k_s$, $c_{v,s}$, and $k_g$ to match the measured outlet temperature. It also optionally
+optimizes a **pre‑measurement** `power_start` that is applied before the measurement window.
+
+### Optimization Strategy
+
+The optimizer is **Powell**, and the search is **snapped to the discrete grid** defined by `bounds` and `steps`.
+The workflow is staged:
+
+1. **Stage 1 (power_start only):** Powell optimizes `power_start` while the other parameters stay at their
+	start values. The result is snapped to the grid.
+2. **Stage 2 (material parameters):** Powell optimizes $T_g$, $k_s$, $c_{v,s}$, and $k_g$ with `power_start` fixed.
+	All parameters are snapped to the grid for evaluation and reporting.
+
+**Penalty (optional):** Controlled by `run.penalty` and `opti.penalty_weight` in `inputs/opti.json`. When enabled, the penalty is applied only to $T_g$, $k_s$, $c_{v,s}$, and $k_g$ (never to `power_start`).
 
 Outputs (in `outputs/opti`):
 - `example_opti_fit.csv` (measured vs. simulated $T_{f,out}$ and residuals)
 - `example_opti_fit.png` (comparison plot)
-- `example_opti_params.txt` (best-fit parameters)
+- `example_opti_input.png` (final input load and mass flow)
+- `example_opti_params.txt` (best‑fit parameters)
 
 ## Runtime Measurement
 
