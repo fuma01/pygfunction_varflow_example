@@ -22,6 +22,7 @@
 """
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.signal import fftconvolve
 from pathlib import Path
@@ -168,6 +169,16 @@ def main():
     T_f_in, T_f_out = compute_fluid_temperatures_with_network_grid(
         Q_tot, T_b, m_flow_total, m_flow_borehole_ts, m_grid, network_grid, cp_f
     )
+    timestamps = pd.date_range(start="2020-01-01", periods=Nt, freq=pd.to_timedelta(dt, unit="s"))
+    df_measurements = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "Tf_in": T_f_in,
+            "Tf_out": T_f_out,
+            "m_flow": m_flow_borehole_ts,
+        }
+    )
+    df_measurements.to_csv(out_dir / "varflow_measurements.csv", index=False)
     t4 = tt.perf_counter()
     print(f"[Runtime] section 4: compute fluid temps: {t4 - t3:.2f} s")
 

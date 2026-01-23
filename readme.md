@@ -105,6 +105,18 @@ Plots are written to the `outputs/` directory (relative to the script):
 - `example_varflow_results.png`
 - `Rb_vs_mflow.png`
 
+### Optimization Example (`example_opti.py`)
+
+`example_opti.py` loads the synthetic measurements from `outputs/varflow_measurements.csv` and estimates
+the parameters $T_s$, $k_s$, $c_{v,s}$, $k_g$, and optionally `power_start` to match the measured
+outlet temperature. The optimization uses a penalty term to discourage large deviations from the
+provided start values.
+
+Outputs:
+- `example_opti_fit.csv` (measured vs. simulated $T_{f,out}$ and residuals)
+- `example_opti_fit.png` (comparison plot)
+- `example_opti_params.txt` (best-fit parameters)
+
 ## Runtime Measurement
 
 The script measures and prints the runtime for the following sections:
