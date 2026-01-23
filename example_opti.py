@@ -526,7 +526,7 @@ def main():
 
     run_cfg = config.get("run", {})
     measurement_path = base_dir / run_cfg.get("measurements", "outputs/varflow/varflow_measurements.csv")
-    date_start = run_cfg.get("date_start")
+    date_start = config.get("dates", {}).get("simulation_start")
     max_iter = int(run_cfg.get("max_iter", 30))
     optimize_power_start = bool(run_cfg.get("optimize_power_start", False))
     penalty = bool(run_cfg.get("penalty", True))
@@ -571,13 +571,27 @@ def main():
 
     df = load_measurements(measurement_path)
     measurement_begin = run_cfg.get("measurement_begin")
+    simulation_start = config.get("dates", {}).get("simulation_start")
+    date_start = simulation_start
+
     if measurement_begin:
         measurement_begin_ts = pd.Timestamp(measurement_begin)
+    else:
+        measurement_begin_ts = None
+
+    if measurement_begin_ts is not None and date_start is not None:
+        simulation_start_ts = pd.Timestamp(date_start)
+        use_power_start = simulation_start_ts < measurement_begin_ts
+    else:
+        use_power_start = False
+
+    if measurement_begin_ts is not None:
         mask_fit = df["timestamp"] >= measurement_begin_ts
-        mask_power = df["timestamp"] < measurement_begin_ts
+        mask_power = df["timestamp"] < measurement_begin_ts if use_power_start else None
     else:
         mask_fit = np.ones(len(df), dtype=bool)
         mask_power = None
+        use_power_start = False
     dt = infer_dt_seconds(df)
     t2 = tt.perf_counter()
 
@@ -606,7 +620,7 @@ def main():
     else:
         pre_steps = 0
 
-    optimize_power_start = optimize_power_start
+    optimize_power_start = optimize_power_start and use_power_start
 
     borefield = create_borefield(
         N_1=geo.N_1,

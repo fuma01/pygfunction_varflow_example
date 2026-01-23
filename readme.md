@@ -131,6 +131,10 @@ Plots from `example_varflow.py` are written to `outputs/varflow`:
 the parameters $T_g$, $k_s$, $c_{v,s}$, and $k_g$ to match the measured outlet temperature. It also optionally
 optimizes a **pre‑measurement** `power_start` that is applied before the measurement window.
 
+**Simulation vs. measurement start:** `power_start` is used only when the simulation start date
+(`dates.simulation_start`) is earlier than the measurement start date (`run.measurement_begin`).
+This decision is made automatically.
+
 ### Optimization Strategy
 
 The optimizer is **Powell**, and the search is **snapped to the discrete grid** defined by `bounds` and `steps`.

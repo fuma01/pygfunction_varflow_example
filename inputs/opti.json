@@ -27,9 +27,8 @@
   "run": {
     "measurements": "outputs/varflow/varflow_measurements.csv",
     "output_dir": null,
-    "date_start": null,
     "measurement_begin": "2020-05-01",
-    "max_iter": 5,
+    "max_iter": 10,
     "optimize_power_start": true,
     "penalty": true,
     "sensitivity_sweep": false,
@@ -45,10 +44,6 @@
       "k_g": "W/mK",
         "power_start": "W/m",
         "m_flow_start": "kg/s"
-    },
-    "run": {
-      "date_start": "YYYY-MM-DD",
-      "measurement_begin": "YYYY-MM-DD"
     }
   },
   "outputs": {
