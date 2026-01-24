@@ -263,6 +263,8 @@ def run_sensitivity_sweep_2d(
     bounds: dict,
     optimize_power_start: bool,
     sweep_points: int,
+    sweep_cv_s_k_s: bool,
+    sweep_T_g_power_start: bool,
     out_dir: Path,
 ):
     n_boreholes = len(borefield)
@@ -296,99 +298,190 @@ def run_sensitivity_sweep_2d(
 
     k_s_vals = np.linspace(bounds["k_s"][0], bounds["k_s"][1], sweep_points)
     cv_s_vals = np.linspace(bounds["cv_s"][0], bounds["cv_s"][1], sweep_points)
+    t_g_vals = np.linspace(bounds["T_g"][0], bounds["T_g"][1], sweep_points)
+    power_vals = np.linspace(bounds["power_start"][0], bounds["power_start"][1], sweep_points)
 
-    z_rmse = np.zeros((len(cv_s_vals), len(k_s_vals)), dtype=float)
+    def run_grid(param_x: str, x_vals: np.ndarray, param_y: str, y_vals: np.ndarray, tag: str, note: str):
+        z_rmse = np.zeros((len(y_vals), len(x_vals)), dtype=float)
+        eval_counter = 0
+        for i, y_val in enumerate(y_vals):
+            for j, x_val in enumerate(x_vals):
+                t_eval_start = tt.perf_counter()
+                params = dict(starts)
+                params[param_x] = float(x_val)
+                params[param_y] = float(y_val)
+                if not optimize_power_start:
+                    params["power_start"] = starts["power_start"]
+
+                q_b_eff = q_b_per_m.copy()
+                m_flow_eff = m_flow_borehole_ts.copy()
+                if mask_power is not None:
+                    q_b_eff[mask_power] = params["power_start"]
+                    m_flow_eff[mask_power] = starts["m_flow_start"]
+                Q_tot = n_boreholes * geo.H * q_b_eff
+                m_flow_total = m_flow_eff * n_boreholes
+
+                alpha = params["k_s"] / params["cv_s"]
+                load_agg = gt.load_aggregation.ClaessonJaved(dt, dt * (pre_steps + len(time)))
+                time_req = load_agg.get_times_for_simulation()
+                t_eskilson_req = alpha * np.asarray(time_req) / (geo.r_b**2)
+                g_needed = g_of_eskilson(t_eskilson_req)
+                load_agg.initialize(g_needed / (2 * np.pi * params["k_s"]))
+
+                T_b = simulate_Tb(
+                    time=time,
+                    q_b_per_m=q_b_eff,
+                    LoadAgg=load_agg,
+                    T_s=params["T_g"],
+                    dt=dt,
+                    pre_steps=pre_steps,
+                    power_start=params["power_start"],
+                )
+
+                network_grid = get_network_grid(params["k_s"], params["k_g"])
+                _, T_f_out_sim = compute_fluid_temperatures_with_network_grid(
+                    Q_tot,
+                    T_b,
+                    m_flow_total,
+                    m_flow_eff,
+                    m_grid,
+                    network_grid,
+                    cp_f,
+                    m_grid_index=m_grid_index_eff,
+                )
+
+                rmse_out = rmse(T_f_out_sim[mask_fit], tf_out_meas[mask_fit])
+                z_rmse[i, j] = rmse_out
+                eval_counter += 1
+                t_eval = tt.perf_counter() - t_eval_start
+                print(
+                    f"Sweep2D {tag} {eval_counter:04d} | {param_x}={x_val:.6g} {param_y}={y_val:.6g} | "
+                    f"rmse_out={rmse_out:.6g} | t={t_eval:.3f}s"
+                )
+
+        x_grid, y_grid = np.meshgrid(x_vals, y_vals)
+        df_grid = pd.DataFrame(
+            {
+                param_x: x_grid.ravel(),
+                param_y: y_grid.ravel(),
+                "rmse_out": z_rmse.ravel(),
+            }
+        )
+        df_grid.to_csv(out_dir / f"sensitivity_2d_{tag}.csv", index=False)
+
+        min_index = np.unravel_index(np.nanargmin(z_rmse), z_rmse.shape)
+        min_y = float(y_vals[min_index[0]])
+        min_x = float(x_vals[min_index[1]])
+        min_loss = float(z_rmse[min_index])
+
+        ridge_max = (np.nanmax(z_rmse) - min_loss) / 20.0 + min_loss
+        ridge_mask = z_rmse <= ridge_max
+        ridge_line = None
+        if np.any(ridge_mask):
+            ridge_x = x_grid[ridge_mask]
+            ridge_y = y_grid[ridge_mask]
+            ridge_line = (
+                float(np.min(ridge_x)),
+                float(np.min(ridge_y)),
+                float(np.max(ridge_x)),
+                float(np.max(ridge_y)),
+            )
+
+        if param_x == "cv_s":
+            x_plot = x_grid / 1.0e6
+        else:
+            x_plot = x_grid
+        if param_y == "cv_s":
+            y_plot = y_grid / 1.0e6
+        else:
+            y_plot = y_grid
+
+        if ridge_line is not None and (param_x == "cv_s" or param_y == "cv_s"):
+            rx_min, ry_min, rx_max, ry_max = ridge_line
+            if param_x == "cv_s":
+                rx_min /= 1.0e6
+                rx_max /= 1.0e6
+            if param_y == "cv_s":
+                ry_min /= 1.0e6
+                ry_max /= 1.0e6
+            ridge_line = (rx_min, ry_min, rx_max, ry_max)
+
+        plot_sensitivity_2d(
+            x_plot,
+            y_plot,
+            z_rmse,
+            out_dir / f"sensitivity_2d_{tag}.png",
+            note=note,
+            ridge_line=ridge_line,
+        )
+
+        summary_path = out_dir / "example_opti_sensi2D.txt"
+        if not summary_path.exists():
+            summary_path.write_text(
+                "sweep_name, min_rmse, value_name1, value1, value_name2, value2, sweep_points, fixed_parameter\n",
+                encoding="utf-8",
+            )
+        fixed_clean = (note or "").replace('"', "''")
+        with summary_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                f"{tag}, {min_loss:.6g}, {param_x}, {min_x:.6g}, {param_y}, {min_y:.6g}, {sweep_points}, \"{fixed_clean}\"\n"
+            )
+
+        if np.any(ridge_mask):
+            ridge_path = out_dir / "example_opti_sensi2D_ridge.txt"
+            if not ridge_path.exists():
+                ridge_path.write_text(
+                    "sweep_name, ridge_max, min_rmse, x_name, x_min, x_max, y_name, y_min, y_max, n_points\n",
+                    encoding="utf-8",
+                )
+            with ridge_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    f"{tag}, {ridge_max:.6g}, {min_loss:.6g}, {param_x}, {np.min(ridge_x):.6g}, {np.max(ridge_x):.6g}, "
+                    f"{param_y}, {np.min(ridge_y):.6g}, {np.max(ridge_y):.6g}, {ridge_x.size}\n"
+                )
+
+    def fixed_note(exclude: list[str]) -> str:
+        units_2d = {
+            "T_g": "degC",
+            "k_s": "W/mK",
+            "cv_s": "MJ/m³/K",
+            "k_g": "W/mK",
+            "power_start": "W/m",
+        }
+        fixed = []
+        for name in ["T_g", "k_s", "cv_s", "k_g", "power_start"]:
+            if name in exclude:
+                continue
+            value = starts[name]
+            if name == "cv_s":
+                value = value / 1.0e6
+            unit = units_2d.get(name, "")
+            fixed.append(f"{name}={value:.6g} {unit}".rstrip())
+        return "Fixed: " + ", ".join(fixed)
     m_flow_start_idx = np.abs(m_grid - starts["m_flow_start"]).argmin()
     m_grid_index_eff = m_grid_index
     if mask_power is not None:
         m_grid_index_eff = m_grid_index.copy()
         m_grid_index_eff[mask_power] = m_flow_start_idx
-    eval_counter = 0
-    for i, cv_s in enumerate(cv_s_vals):
-        for j, k_s in enumerate(k_s_vals):
-            t_eval_start = tt.perf_counter()
-            params = dict(starts)
-            params["cv_s"] = float(cv_s)
-            params["k_s"] = float(k_s)
-            if not optimize_power_start:
-                params["power_start"] = starts["power_start"]
+    if sweep_cv_s_k_s:
+        run_grid(
+            "k_s",
+            k_s_vals,
+            "cv_s",
+            cv_s_vals,
+            "k_s_cv_s",
+            fixed_note(["k_s", "cv_s"]),
+        )
 
-            q_b_eff = q_b_per_m.copy()
-            m_flow_eff = m_flow_borehole_ts.copy()
-            if mask_power is not None:
-                q_b_eff[mask_power] = params["power_start"]
-                m_flow_eff[mask_power] = starts["m_flow_start"]
-            Q_tot = n_boreholes * geo.H * q_b_eff
-            m_flow_total = m_flow_eff * n_boreholes
-
-            alpha = params["k_s"] / params["cv_s"]
-            load_agg = gt.load_aggregation.ClaessonJaved(dt, dt * (pre_steps + len(time)))
-            time_req = load_agg.get_times_for_simulation()
-            t_eskilson_req = alpha * np.asarray(time_req) / (geo.r_b**2)
-            g_needed = g_of_eskilson(t_eskilson_req)
-            load_agg.initialize(g_needed / (2 * np.pi * params["k_s"]))
-
-            T_b = simulate_Tb(
-                time=time,
-                q_b_per_m=q_b_eff,
-                LoadAgg=load_agg,
-                T_s=params["T_g"],
-                dt=dt,
-                pre_steps=pre_steps,
-                power_start=params["power_start"],
-            )
-
-            network_grid = get_network_grid(params["k_s"], params["k_g"])
-            _, T_f_out_sim = compute_fluid_temperatures_with_network_grid(
-                Q_tot,
-                T_b,
-                m_flow_total,
-                m_flow_eff,
-                m_grid,
-                network_grid,
-                cp_f,
-                m_grid_index=m_grid_index_eff,
-            )
-
-            rmse_out = rmse(T_f_out_sim[mask_fit], tf_out_meas[mask_fit])
-            z_rmse[i, j] = rmse_out
-            eval_counter += 1
-            t_eval = tt.perf_counter() - t_eval_start
-            print(
-                f"Sweep2D {eval_counter:04d} | k_s={k_s:.6g} cv_s={cv_s:.6g} | "
-                f"rmse_out={rmse_out:.6g} | t={t_eval:.3f}s"
-            )
-
-    ks_grid, cvs_grid = np.meshgrid(k_s_vals, cv_s_vals)
-    df_grid = pd.DataFrame(
-        {
-            "k_s": ks_grid.ravel(),
-            "cv_s": cvs_grid.ravel(),
-            "rmse_out": z_rmse.ravel(),
-        }
-    )
-    df_grid.to_csv(out_dir / "sensitivity_2d_k_s_cv_s.csv", index=False)
-
-    def format_fixed_values_2d() -> str:
-        fixed = []
-        units_2d = {
-            "T_g": "degC",
-            "k_g": "W/mK",
-            "power_start": "W/m",
-        }
-        for name in ["T_g", "k_g", "power_start"]:
-            value = starts[name]
-            unit = units_2d.get(name, "")
-            fixed.append(f"{name}={value:.6g} {unit}".rstrip())
-        return "Fixed: " + ", ".join(fixed)
-
-    plot_sensitivity_2d(
-        ks_grid,
-        cvs_grid,
-        z_rmse,
-        out_dir / "sensitivity_2d_k_s_cv_s.png",
-        note=format_fixed_values_2d(),
-    )
+    if sweep_T_g_power_start:
+        run_grid(
+            "T_g",
+            t_g_vals,
+            "power_start",
+            power_vals,
+            "T_g_power_start",
+            fixed_note(["T_g", "power_start"]),
+        )
 
 
 def objective_factory(
@@ -579,7 +672,8 @@ def main():
     penalty = bool(run_cfg.get("penalty", True))
     sensitivity_sweep = bool(run_cfg.get("sensitivity_sweep", False))
     sweep_points = int(run_cfg.get("sweep_points", 9))
-    sweep_2d = bool(run_cfg.get("sweep_2d", False))
+    sweep_2d_cv_s_k_s = bool(run_cfg.get("sweep_2d_cv_s_k_s", False))
+    sweep_2d_T_g_power_start = bool(run_cfg.get("sweep_2d_T_g_power_start", False))
     sweep_2d_points = int(run_cfg.get("sweep_2d_points", 9))
 
     outputs_cfg = config.get("outputs", {})
@@ -591,7 +685,11 @@ def main():
     if output_override:
         output_dir = base_dir / output_override
     else:
-        output_dir = default_sensitivity_dir if (sensitivity_sweep or sweep_2d) else default_opti_dir
+        output_dir = (
+            default_sensitivity_dir
+            if (sensitivity_sweep or sweep_2d_cv_s_k_s or sweep_2d_T_g_power_start)
+            else default_opti_dir
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     geo_cfg = config.get("geometry", {})
@@ -715,7 +813,7 @@ def main():
     bounds["cv_s"] = (float(bounds["cv_s"][0]) * 1.0e6, float(bounds["cv_s"][1]) * 1.0e6)
     steps["cv_s"] = float(steps["cv_s"]) * 1.0e6
     penalty_weight = float(opti_cfg.get("penalty_weight", 1.0)) if penalty else 0.0
-    if not (sensitivity_sweep or sweep_2d):
+    if not (sensitivity_sweep or sweep_2d_cv_s_k_s or sweep_2d_T_g_power_start):
         print(f"[Penalty] enabled={bool(penalty)} | weight={penalty_weight}")
 
     def snap_value(value: float, name: str) -> float:
@@ -763,7 +861,7 @@ def main():
         print(f"[Total Runtime] {tt.perf_counter() - t_start:.2f} s")
         return
 
-    if sweep_2d:
+    if sweep_2d_cv_s_k_s or sweep_2d_T_g_power_start:
         run_sensitivity_sweep_2d(
             df=df,
             dt=dt,
@@ -788,6 +886,8 @@ def main():
             bounds=bounds,
             optimize_power_start=optimize_power_start,
             sweep_points=sweep_2d_points,
+            sweep_cv_s_k_s=sweep_2d_cv_s_k_s,
+            sweep_T_g_power_start=sweep_2d_T_g_power_start,
             out_dir=output_dir,
         )
         print(f"[Total Runtime] {tt.perf_counter() - t_start:.2f} s")

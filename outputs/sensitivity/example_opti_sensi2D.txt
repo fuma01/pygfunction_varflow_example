@@ -1,0 +1,7 @@
+sweep_name, min_rmse, value_name1, value1, value_name2, value2, sweep_points, fixed_parameter
+T_g_power_start, 0.245462, T_g, 11.25, power_start, 0, 5, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+T_g_power_start, 0.245462, T_g, 11.25, power_start, 0, 5, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+T_g_power_start, 0.116061, T_g, 11.6667, power_start, 6.66667, 10, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+T_g_power_start, 0.116061, T_g, 11.6667, power_start, 6.66667, 10, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+T_g_power_start, 0.245462, T_g, 11.25, power_start, 0, 5, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+T_g_power_start, 0.124597, T_g, 11.8182, power_start, 8.18182, 12, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"

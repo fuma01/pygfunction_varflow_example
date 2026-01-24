@@ -443,13 +443,39 @@ def plot_sensitivity_combined(combined: dict, out_path: Path, note: str | None =
     plt.close(fig)
 
 
-def plot_sensitivity_2d(ks_grid, cvs_grid, z_rmse, out_path: Path, note: str | None = None):
+def plot_sensitivity_2d(
+    x_grid,
+    y_grid,
+    z_rmse,
+    out_path: Path,
+    note: str | None = None,
+    ridge_line: tuple[float, float, float, float] | None = None,
+):
     fig, ax = plt.subplots(1, 1, figsize=(7, 5))
-    contour = ax.contourf(ks_grid, cvs_grid / 1.0e6, z_rmse, levels=15)
+    contour = ax.contourf(x_grid, y_grid, z_rmse, levels=15)
     fig.colorbar(contour, ax=ax, label="RMSE Tf_out [degC]")
-    ax.set_xlabel("k_s [W/mK]")
-    ax.set_ylabel("cv_s [MJ/m³/K]")
-    ax.set_title("Sensitivity sweep: k_s vs cv_s")
+
+    name = out_path.stem
+    if "k_s_cv_s" in name:
+        ax.set_xlabel("k_s [W/mK]")
+        ax.set_ylabel("cv_s [MJ/m³/K]")
+        ax.set_title("Sensitivity sweep: k_s vs cv_s")
+    elif "T_g_power_start" in name:
+        ax.set_xlabel("T_g [degC]")
+        ax.set_ylabel("power_start [W/m]")
+        ax.set_title("Sensitivity sweep: T_g vs power_start")
+    elif "T_g_k_s" in name:
+        ax.set_xlabel("T_g [degC]")
+        ax.set_ylabel("k_s [W/mK]")
+        ax.set_title("Sensitivity sweep: T_g vs k_s")
+    elif "power_start_k_s" in name:
+        ax.set_xlabel("power_start [W/m]")
+        ax.set_ylabel("k_s [W/mK]")
+        ax.set_title("Sensitivity sweep: power_start vs k_s")
+
+    if ridge_line is not None:
+        x_min, y_min, x_max, y_max = ridge_line
+        ax.plot([x_min, x_max], [y_min, y_max], color="black", linewidth=1.5, label="ridge")
     if note:
         fig.text(0.5, 0.02, note, fontsize=9, ha="center", va="bottom", color="gray")
     fig.tight_layout()
