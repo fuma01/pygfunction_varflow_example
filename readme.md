@@ -8,6 +8,8 @@ This repository contains **two examples**:
 
 Below you will find a **short overview**, then a **detailed description of `example_varflow.py`**, followed by a **detailed description of `example_opti.py`** (including the optimization strategy).
 
+Because the synthetic load profile is fully known, the two examples provide full control over the optimization target. This makes them especially suitable for testing optimization cadence and behavior, including changes to start values, bounds, and step sizes.
+
 ## Example 1 (Overview): `example_varflow.py`
 
 `example_varflow.py` simulates a geothermal borefield with a time‑varying load and a variable mass flow rate. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function. The script writes **synthetic measurements** that are used by `example_opti.py`.

@@ -347,7 +347,7 @@ def plot_rb_vs_mflow(
     plt.close(fig_rb)
 
 
-def plot_sensitivity_param(df_param: pd.DataFrame, param: str, out_path: Path):
+def plot_sensitivity_param(df_param: pd.DataFrame, param: str, out_path: Path, note: str | None = None):
     fig, ax = plt.subplots(1, 1, figsize=(8, 4))
     x_vals = df_param["value"]
     x_label = param
@@ -359,13 +359,24 @@ def plot_sensitivity_param(df_param: pd.DataFrame, param: str, out_path: Path):
     ax.set_ylabel("RMSE [degC]")
     ax.grid(True, which="both", alpha=0.2)
     ax.legend()
+    if note:
+        fig.text(0.5, 0.002, note, fontsize=9, ha="center", va="bottom", color="gray")
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.18)
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
 
-def plot_sensitivity_combined(combined: dict, out_path: Path):
-    fig, ax_out = plt.subplots(1, 1, figsize=(9, 4))
+def plot_sensitivity_combined(combined: dict, out_path: Path, note: str | None = None):
+    fig, ax_out = plt.subplots(1, 1, figsize=(9, 6.5))
+    ax_tg = ax_out.twiny()
+    ax_ps = ax_out.twiny()
+    ax_tg.xaxis.set_label_position("bottom")
+    ax_tg.xaxis.tick_bottom()
+    ax_tg.spines["bottom"].set_position(("outward", 55))
+    ax_ps.xaxis.set_label_position("bottom")
+    ax_ps.xaxis.tick_bottom()
+    ax_ps.spines["bottom"].set_position(("outward", 105))
     colors = [
         "tab:blue",
         "tab:orange",
@@ -375,13 +386,25 @@ def plot_sensitivity_combined(combined: dict, out_path: Path):
         "tab:brown",
     ]
     markers = ["o", "s", "^", "D", "v", "P"]
+    handles = []
+    labels = []
+    tg_color = None
+    ps_color = None
     for idx, (param, df_param) in enumerate(combined.items()):
         color = colors[idx % len(colors)]
         marker = markers[idx % len(markers)]
         x_vals = df_param["value"]
         if param == "cv_s":
             x_vals = x_vals / 1.0e6
-        ax_out.plot(
+        if param == "T_g":
+            target_ax = ax_tg
+            tg_color = color
+        elif param == "power_start":
+            target_ax = ax_ps
+            ps_color = color
+        else:
+            target_ax = ax_out
+        line = target_ax.plot(
             x_vals,
             df_param["rmse_out"],
             label=param,
@@ -390,11 +413,30 @@ def plot_sensitivity_combined(combined: dict, out_path: Path):
             linewidth=1.5,
             markersize=4,
         )
+        handles.append(line[0])
+        labels.append(param)
 
-    ax_out.set_xlabel("Parameter value (cv_s in MJ/m³/K)")
+    ax_out.set_xlabel("Parameter values (k_s, k_g, cv_s)")
     ax_out.set_ylabel("RMSE Tf_out [degC]")
     ax_out.grid(True, which="both", alpha=0.2)
-    ax_out.legend()
+    ax_out.legend(handles, labels, loc="best", framealpha=0.9, facecolor="white")
+
+    ax_tg.set_xlabel("T_g [degC]")
+    ax_ps.set_xlabel("power_start [W/m]")
+
+    if tg_color is not None:
+        ax_tg.tick_params(axis="x", colors=tg_color)
+        ax_tg.xaxis.label.set_color(tg_color)
+        ax_tg.spines["bottom"].set_color(tg_color)
+    if ps_color is not None:
+        ax_ps.tick_params(axis="x", colors=ps_color)
+        ax_ps.xaxis.label.set_color(ps_color)
+        ax_ps.spines["bottom"].set_color(ps_color)
+
+    if note:
+        fig.text(0.5, 0.002, note, fontsize=9, ha="center", va="bottom", color="gray")
+
+    fig.subplots_adjust(bottom=0.4)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)

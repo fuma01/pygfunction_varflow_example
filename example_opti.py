@@ -101,8 +101,6 @@ def run_sensitivity_sweep(
     tf_out_meas = df["Tf_out"].to_numpy()
 
     cache = {}
-    eval_cache = {}
-    eval_cache = {}
 
     def get_network_grid(k_s: float, k_g: float):
         cache_key = (round(k_s, 6), round(k_g, 6))
@@ -135,14 +133,38 @@ def run_sensitivity_sweep(
     summary_rows = []
     combined = {}
     eval_counter = 0
-    for param in sweep_params:
-        values = np.linspace(bounds[param][0], bounds[param][1], sweep_points)
-        rows = []
+
     m_flow_start_idx = np.abs(m_grid - starts["m_flow_start"]).argmin()
     m_grid_index_eff = m_grid_index
     if mask_power is not None:
         m_grid_index_eff = m_grid_index.copy()
         m_grid_index_eff[mask_power] = m_flow_start_idx
+
+    units = {
+        "T_g": "degC",
+        "k_s": "W/mK",
+        "cv_s": "MJ/m³/K",
+        "k_g": "W/mK",
+        "power_start": "W/m",
+        "m_flow_start": "kg/s",
+    }
+
+    def format_fixed_values(current_param: str | None) -> str:
+        fixed = []
+        for name in ["T_g", "k_s", "cv_s", "k_g", "power_start"]:
+            if current_param is not None and name == current_param:
+                continue
+            value = starts[name]
+            if name == "cv_s":
+                value = value / 1.0e6
+            unit = units.get(name, "")
+            fixed.append(f"{name}={value:.6g} {unit}".rstrip())
+        fixed.append(f"m_flow_start={starts['m_flow_start']:.6g} {units['m_flow_start']}")
+        return "Fixed: " + ", ".join(fixed)
+
+    for param in sweep_params:
+        values = np.linspace(bounds[param][0], bounds[param][1], sweep_points)
+        rows = []
         for val in values:
             t_eval_start = tt.perf_counter()
             params = dict(starts)
@@ -160,115 +182,122 @@ def run_sensitivity_sweep(
 
             alpha = params["k_s"] / params["cv_s"]
             load_agg = gt.load_aggregation.ClaessonJaved(dt, dt * (pre_steps + len(time)))
-            n_boreholes = len(borefield)
-            tf_out_meas = df["Tf_out"].to_numpy()
+            time_req = load_agg.get_times_for_simulation()
+            t_eskilson_req = alpha * np.asarray(time_req) / (geo.r_b**2)
+            g_needed = g_of_eskilson(t_eskilson_req)
+            load_agg.initialize(g_needed / (2 * np.pi * params["k_s"]))
 
-            cache = {}
+            T_b = simulate_Tb(
+                time=time,
+                q_b_per_m=q_b_eff,
+                LoadAgg=load_agg,
+                T_s=params["T_g"],
+                dt=dt,
+                pre_steps=pre_steps,
+                power_start=params["power_start"],
+            )
 
-            def get_network_grid(k_s: float, k_g: float):
-                cache_key = (round(k_s, 6), round(k_g, 6))
-                if cache_key in cache:
-                    return cache[cache_key]
-                network_grid = build_network_grid(
-                    m_grid,
-                    borefield,
-                    pos,
-                    geo.r_in,
-                    geo.r_out,
-                    k_p,
-                    k_s,
-                    k_g,
-                    geo.epsilon,
-                    mu_f,
-                    rho_f,
-                    k_f,
-                    cp_f,
-                    n_pipes=geo.n_pipes,
-                    config="parallel",
-                )
-                cache[cache_key] = network_grid
-                return network_grid
+            network_grid = get_network_grid(params["k_s"], params["k_g"])
+            _, T_f_out_sim = compute_fluid_temperatures_with_network_grid(
+                Q_tot,
+                T_b,
+                m_flow_total,
+                m_flow_eff,
+                m_grid,
+                network_grid,
+                cp_f,
+                m_grid_index=m_grid_index_eff,
+            )
 
-            sweep_params = ["T_g", "k_s", "cv_s", "k_g"]
-            if optimize_power_start:
-                sweep_params.append("power_start")
+            rmse_out = rmse(T_f_out_sim[mask_fit], tf_out_meas[mask_fit])
+            eval_counter += 1
+            t_eval = tt.perf_counter() - t_eval_start
+            params_str = ", ".join(f"{k}={v:.6g}" for k, v in params.items())
+            print(
+                f"Sweep {eval_counter:04d} | param={param} value={float(val):.6g} | "
+                f"rmse_out={rmse_out:.6g} | t={t_eval:.3f}s | {params_str}"
+            )
+            rows.append({"param": param, "value": float(val), "rmse_out": rmse_out})
 
-            m_flow_start_idx = np.abs(m_grid - starts["m_flow_start"]).argmin()
-            m_grid_index_eff = m_grid_index
-            if mask_power is not None:
-                m_grid_index_eff = m_grid_index.copy()
-                m_grid_index_eff[mask_power] = m_flow_start_idx
+        df_param = pd.DataFrame(rows)
+        df_param.to_csv(out_dir / f"sensitivity_{param}.csv", index=False)
+        combined[param] = df_param
+        summary_rows.extend(rows)
 
-            summary_rows = []
-            combined = {}
-            eval_counter = 0
-            for param in sweep_params:
-                values = np.linspace(bounds[param][0], bounds[param][1], sweep_points)
-                rows = []
-                for val in values:
-                    t_eval_start = tt.perf_counter()
-                    params = dict(starts)
-                    params[param] = float(val)
-                    if not optimize_power_start:
-                        params["power_start"] = starts["power_start"]
+        plot_sensitivity_param(
+            df_param,
+            param,
+            out_dir / f"sensitivity_{param}.png",
+            note=format_fixed_values(param),
+        )
 
-                    q_b_eff = q_b_per_m.copy()
-                    m_flow_eff = m_flow_borehole_ts.copy()
-                    if mask_power is not None:
-                        q_b_eff[mask_power] = params["power_start"]
-                        m_flow_eff[mask_power] = starts["m_flow_start"]
-                    Q_tot = n_boreholes * geo.H * q_b_eff
-                    m_flow_total = m_flow_eff * n_boreholes
+    pd.DataFrame(summary_rows).to_csv(out_dir / "sensitivity_summary.csv", index=False)
+    plot_sensitivity_combined(
+        combined,
+        out_dir / "sensitivity_combined.png",
+        note=format_fixed_values(None),
+    )
 
-                    alpha = params["k_s"] / params["cv_s"]
-                    load_agg = gt.load_aggregation.ClaessonJaved(dt, dt * (pre_steps + len(time)))
-                    time_req = load_agg.get_times_for_simulation()
-                    t_eskilson_req = alpha * np.asarray(time_req) / (geo.r_b**2)
-                    g_needed = g_of_eskilson(t_eskilson_req)
-                    load_agg.initialize(g_needed / (2 * np.pi * params["k_s"]))
 
-                    T_b = simulate_Tb(
-                        time=time,
-                        q_b_per_m=q_b_eff,
-                        LoadAgg=load_agg,
-                        T_s=params["T_g"],
-                        dt=dt,
-                        pre_steps=pre_steps,
-                        power_start=params["power_start"],
-                    )
+def run_sensitivity_sweep_2d(
+    *,
+    df: pd.DataFrame,
+    dt: float,
+    time: np.ndarray,
+    q_b_per_m: np.ndarray,
+    m_flow_borehole_ts: np.ndarray,
+    mask_fit: np.ndarray,
+    mask_power: np.ndarray | None,
+    borefield,
+    g_of_eskilson,
+    geo: GeometryConfig,
+    cp_f: float,
+    rho_f: float,
+    mu_f: float,
+    k_f: float,
+    k_p: float,
+    pos,
+    m_grid: np.ndarray,
+    m_grid_index: np.ndarray,
+    pre_steps: int,
+    starts: dict,
+    bounds: dict,
+    optimize_power_start: bool,
+    sweep_points: int,
+    out_dir: Path,
+):
+    n_boreholes = len(borefield)
+    tf_out_meas = df["Tf_out"].to_numpy()
 
-                    network_grid = get_network_grid(params["k_s"], params["k_g"])
-                    _, T_f_out_sim = compute_fluid_temperatures_with_network_grid(
-                        Q_tot,
-                        T_b,
-                        m_flow_total,
-                        m_flow_eff,
-                        m_grid,
-                        network_grid,
-                        cp_f,
-                        m_grid_index=m_grid_index_eff,
-                    )
+    cache = {}
 
-                    rmse_out = rmse(T_f_out_sim[mask_fit], tf_out_meas[mask_fit])
-                    eval_counter += 1
-                    t_eval = tt.perf_counter() - t_eval_start
-                    params_str = ", ".join(f"{k}={v:.6g}" for k, v in params.items())
-                    print(
-                        f"Sweep {eval_counter:04d} | param={param} value={float(val):.6g} | "
-                        f"rmse_out={rmse_out:.6g} | t={t_eval:.3f}s | {params_str}"
-                    )
-                    rows.append({"param": param, "value": float(val), "rmse_out": rmse_out})
+    def get_network_grid(k_s: float, k_g: float):
+        cache_key = (round(k_s, 6), round(k_g, 6))
+        if cache_key in cache:
+            return cache[cache_key]
+        network_grid = build_network_grid(
+            m_grid,
+            borefield,
+            pos,
+            geo.r_in,
+            geo.r_out,
+            k_p,
+            k_s,
+            k_g,
+            geo.epsilon,
+            mu_f,
+            rho_f,
+            k_f,
+            cp_f,
+            n_pipes=geo.n_pipes,
+            config="parallel",
+        )
+        cache[cache_key] = network_grid
+        return network_grid
 
-                df_param = pd.DataFrame(rows)
-                df_param.to_csv(out_dir / f"sensitivity_{param}.csv", index=False)
-                combined[param] = df_param
-                summary_rows.extend(rows)
+    k_s_vals = np.linspace(bounds["k_s"][0], bounds["k_s"][1], sweep_points)
+    cv_s_vals = np.linspace(bounds["cv_s"][0], bounds["cv_s"][1], sweep_points)
 
-                plot_sensitivity_param(df_param, param, out_dir / f"sensitivity_{param}.png")
-
-            pd.DataFrame(summary_rows).to_csv(out_dir / "sensitivity_summary.csv", index=False)
-
-            plot_sensitivity_combined(combined, out_dir / "sensitivity_combined.png")
     z_rmse = np.zeros((len(cv_s_vals), len(k_s_vals)), dtype=float)
     m_flow_start_idx = np.abs(m_grid - starts["m_flow_start"]).argmin()
     m_grid_index_eff = m_grid_index
@@ -668,7 +697,8 @@ def main():
     bounds["cv_s"] = (float(bounds["cv_s"][0]) * 1.0e6, float(bounds["cv_s"][1]) * 1.0e6)
     steps["cv_s"] = float(steps["cv_s"]) * 1.0e6
     penalty_weight = float(opti_cfg.get("penalty_weight", 1.0)) if penalty else 0.0
-    print(f"[Penalty] enabled={bool(penalty)} | weight={penalty_weight}")
+    if not (sensitivity_sweep or sweep_2d):
+        print(f"[Penalty] enabled={bool(penalty)} | weight={penalty_weight}")
 
     def snap_value(value: float, name: str) -> float:
         if name not in bounds or name not in steps:

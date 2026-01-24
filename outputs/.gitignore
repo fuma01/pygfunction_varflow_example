@@ -1,0 +1,9 @@
+# ignore everything in all subdirectories 
+**/*
+#except gitignore
+!.gitignore
+# except png and txt files in all subdirectories
+!**/*.png
+!**/*.txt
+#except varflow_measurements.csv in the root directory
+!varflow_measurements.csv
