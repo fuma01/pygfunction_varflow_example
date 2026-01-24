@@ -1,5 +1,6 @@
 # ignore everything in all subdirectories 
 **/*
+!**/
 #except gitignore
 !.gitignore
 # except png and txt files in all subdirectories
