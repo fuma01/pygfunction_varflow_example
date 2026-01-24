@@ -30,11 +30,11 @@
     "measurement_begin": "2020-05-01",
     "max_iter": 10,
     "optimize_power_start": true,
-    "penalty": true,
+    "penalty": false,
     "sensitivity_sweep": false,
     "sweep_points": 9,
-    "sweep_2d": true,
-    "sweep_2d_points": 3
+    "sweep_2d": false,
+    "sweep_2d_points": 9
   },
   "units": {
     "opti": {

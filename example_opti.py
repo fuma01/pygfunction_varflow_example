@@ -159,7 +159,6 @@ def run_sensitivity_sweep(
                 value = value / 1.0e6
             unit = units.get(name, "")
             fixed.append(f"{name}={value:.6g} {unit}".rstrip())
-        fixed.append(f"m_flow_start={starts['m_flow_start']:.6g} {units['m_flow_start']}")
         return "Fixed: " + ", ".join(fixed)
 
     for param in sweep_params:
@@ -370,7 +369,26 @@ def run_sensitivity_sweep_2d(
     )
     df_grid.to_csv(out_dir / "sensitivity_2d_k_s_cv_s.csv", index=False)
 
-    plot_sensitivity_2d(ks_grid, cvs_grid, z_rmse, out_dir / "sensitivity_2d_k_s_cv_s.png")
+    def format_fixed_values_2d() -> str:
+        fixed = []
+        units_2d = {
+            "T_g": "degC",
+            "k_g": "W/mK",
+            "power_start": "W/m",
+        }
+        for name in ["T_g", "k_g", "power_start"]:
+            value = starts[name]
+            unit = units_2d.get(name, "")
+            fixed.append(f"{name}={value:.6g} {unit}".rstrip())
+        return "Fixed: " + ", ".join(fixed)
+
+    plot_sensitivity_2d(
+        ks_grid,
+        cvs_grid,
+        z_rmse,
+        out_dir / "sensitivity_2d_k_s_cv_s.png",
+        note=format_fixed_values_2d(),
+    )
 
 
 def objective_factory(

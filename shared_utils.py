@@ -443,14 +443,17 @@ def plot_sensitivity_combined(combined: dict, out_path: Path, note: str | None =
     plt.close(fig)
 
 
-def plot_sensitivity_2d(ks_grid, cvs_grid, z_rmse, out_path: Path):
+def plot_sensitivity_2d(ks_grid, cvs_grid, z_rmse, out_path: Path, note: str | None = None):
     fig, ax = plt.subplots(1, 1, figsize=(7, 5))
     contour = ax.contourf(ks_grid, cvs_grid / 1.0e6, z_rmse, levels=15)
     fig.colorbar(contour, ax=ax, label="RMSE Tf_out [degC]")
     ax.set_xlabel("k_s [W/mK]")
     ax.set_ylabel("cv_s [MJ/m³/K]")
     ax.set_title("Sensitivity sweep: k_s vs cv_s")
+    if note:
+        fig.text(0.5, 0.02, note, fontsize=9, ha="center", va="bottom", color="gray")
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.18)
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
