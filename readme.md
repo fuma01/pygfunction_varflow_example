@@ -6,9 +6,7 @@ This repository contains **two examples**:
 	Its output is a set of **synthetic measurements** used as input for the optimization example.
 2. **`example_opti.py`** — a parameter estimation workflow that fits simulated outlet temperatures to the synthetic measurements.
 
-Below you will find a **short overview**, then a **detailed description of `example_varflow.py`**, followed by a **detailed description of `example_opti.py`** (including the optimization strategy).
-
-Because the synthetic load profile is fully known, the two examples provide full control over the optimization target. This makes them especially suitable for testing optimization cadence and behavior, including changes to start values, bounds, and step sizes.
+Because the input variables in `example_varflow.py` are fully known, the synthetic measurements and the optimization target in `example_opti.py` are known as well. The two examples therefore provide full control over the optimization target, making them especially suitable for testing optimization cadence and behavior, including changes to start values, bounds, and step sizes.
 
 ## Example 1 (Details): `example_varflow.py`
 
