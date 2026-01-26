@@ -484,13 +484,16 @@ def plot_sensitivity_2d(
     plt.close(fig)
 
 
-def plot_fit_timeseries(df_out: pd.DataFrame, out_path: Path):
+def plot_fit_timeseries(df_out: pd.DataFrame, out_path: Path, note: str | None = None):
     fig, ax = plt.subplots(1, 1, figsize=(9, 4))
     ax.plot(df_out["timestamp"], df_out["Tf_out"], label="measured", alpha=0.8)
     ax.plot(df_out["timestamp"], df_out["Tf_out_sim"], label="simulated", alpha=0.8)
     ax.set_ylabel("Tf_out [degC]")
     ax.legend()
+    if note:
+        fig.text(0.02, 0.02, note, fontsize=8, ha="left", va="bottom", color="gray")
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.18)
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 

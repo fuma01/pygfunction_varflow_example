@@ -1,37 +1,37 @@
 Optimization result
 Success: True
 Message: Optimization terminated successfully.
-Iterations (nit): 3
-Evaluations (nfev): 33
-Final loss: 0.0785672470345729
+Iterations (nit): 1
+Evaluations (nfev): 17
+Final loss: 0.01282139521567804
 Penalty weight: 0.0
-Optimize power_start: False
+Optimize power_start: True
 
 Parameters:
-- T_g: 12.2 degC
-- k_s: 1.9 W/mK
-- cv_s: 2.4 MJ/m³/K
-- k_g: 1.1 W/mK
-- power_start (fixed): 19 W/m
+- T_g: 12.3 degC
+- k_s: 2 W/mK
+- cv_s: 2.2 MJ/m³/K
+- k_g: 1 W/mK
+- power_start (fixed): 20 W/m
 - m_flow_start (fixed): 0.35 kg/s
 
 Start values:
-- T_g: 13 degC
+- T_g: 12.3 degC
 - k_s: 2 W/mK
 - cv_s: 2 MJ/m³/K
-- k_g: 1.5 W/mK
-- power_start: 19 W/m
+- k_g: 1 W/mK
+- power_start: 20 W/m
 - m_flow_start: 0.35 kg/s
 
 Bounds:
-- T_g: [10 degC, 15 degC]
+- T_g: [11.2 degC, 12.6 degC]
 - k_s: [1.5 W/mK, 3 W/mK]
 - cv_s: [2 MJ/m³/K, 2.5 MJ/m³/K]
-- k_g: [0.8 W/mK, 2 W/mK]
-- power_start: [-20 W/m, 20 W/m]
+- k_g: [0.8 W/mK, 1.5 W/mK]
+- power_start: [5 W/m, 30 W/m]
 
 Steps:
-- T_g: 0.2 degC
+- T_g: 0.1 degC
 - k_s: 0.1 W/mK
 - cv_s: 0.2 MJ/m³/K
 - k_g: 0.1 W/mK

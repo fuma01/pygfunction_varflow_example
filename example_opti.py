@@ -731,7 +731,11 @@ def main():
         use_power_start = False
 
     if measurement_begin_ts is not None:
-        mask_fit = df["timestamp"] >= measurement_begin_ts
+        if use_power_start:
+            exclude_end = measurement_begin_ts + pd.Timedelta(days=30)
+            mask_fit = df["timestamp"] >= exclude_end
+        else:
+            mask_fit = df["timestamp"] >= measurement_begin_ts
         mask_power = df["timestamp"] < measurement_begin_ts if use_power_start else None
     else:
         mask_fit = np.ones(len(df), dtype=bool)
@@ -765,7 +769,8 @@ def main():
     else:
         pre_steps = 0
 
-    optimize_power_start = optimize_power_start and use_power_start
+    staged_power_start = bool(optimize_power_start) and use_power_start
+    joint_power_start = (not bool(optimize_power_start)) and use_power_start
 
     borefield = create_borefield(
         N_1=geo.N_1,
@@ -854,7 +859,7 @@ def main():
             pre_steps=pre_steps,
             starts=starts,
             bounds=bounds,
-            optimize_power_start=optimize_power_start,
+            optimize_power_start=use_power_start,
             sweep_points=sweep_points,
             out_dir=output_dir,
         )
@@ -884,7 +889,7 @@ def main():
             pre_steps=pre_steps,
             starts=starts,
             bounds=bounds,
-            optimize_power_start=optimize_power_start,
+            optimize_power_start=use_power_start,
             sweep_points=sweep_2d_points,
             sweep_cv_s_k_s=sweep_2d_cv_s_k_s,
             sweep_T_g_power_start=sweep_2d_T_g_power_start,
@@ -893,8 +898,9 @@ def main():
         print(f"[Total Runtime] {tt.perf_counter() - t_start:.2f} s")
         return
 
-    if optimize_power_start:
-        objective_stage1, _ = objective_factory(
+    stage1_nfev = 0
+    if staged_power_start:
+        objective_stage1, last_eval_stage1 = objective_factory(
             df=df,
             q_b_per_m=q_b_per_m,
             m_flow_borehole_ts=m_flow_borehole_ts,
@@ -941,8 +947,9 @@ def main():
             bounds=[bounds["power_start"]],
             options={"maxiter": max_iter, "disp": True},
         )
+        stage1_nfev = int(last_eval_stage1.get("nfev", 0) or 0)
         starts["power_start"] = snap_value(float(result_stage1.x[0]), "power_start")
-        optimize_power_start = False
+        staged_power_start = False
         print(f"[Stage 1] power_start optimized (Powell): {starts['power_start']:.6g} W/m")
 
     objective, last_eval = objective_factory(
@@ -964,17 +971,22 @@ def main():
         pos=pos,
         m_grid=m_grid,
         pre_steps=pre_steps,
-        optimize_power_start=optimize_power_start,
+        optimize_power_start=joint_power_start,
         steps=steps,
         starts=starts,
         bounds=bounds,
         penalty_weight=penalty_weight,
     )
 
-    x0 = np.array([starts["T_g"], starts["k_s"], starts["cv_s"], starts["k_g"]])
-    bounds_list = [bounds["T_g"], bounds["k_s"], bounds["cv_s"], bounds["k_g"]]
-    names = ["T_g", "k_s", "cv_s", "k_g"]
-    if not optimize_power_start:
+    if joint_power_start:
+        x0 = np.array([starts["T_g"], starts["k_s"], starts["cv_s"], starts["k_g"], starts["power_start"]])
+        bounds_list = [bounds["T_g"], bounds["k_s"], bounds["cv_s"], bounds["k_g"], bounds["power_start"]]
+        names = ["T_g", "k_s", "cv_s", "k_g", "power_start"]
+    else:
+        x0 = np.array([starts["T_g"], starts["k_s"], starts["cv_s"], starts["k_g"]])
+        bounds_list = [bounds["T_g"], bounds["k_s"], bounds["cv_s"], bounds["k_g"]]
+        names = ["T_g", "k_s", "cv_s", "k_g"]
+    if not staged_power_start:
         t3 = tt.perf_counter()
         print(f"[Runtime] section 3: setup opti: {t3 - t2:.2f} s")
 
@@ -987,7 +999,7 @@ def main():
         nfev_delta = nfev_total - iteration["nfev_prev"]
         iteration["nfev_prev"] = nfev_total
         current = last_eval["params"] or dict(zip(names, xk))
-        if not optimize_power_start and "power_start" not in current:
+        if not joint_power_start and "power_start" not in current:
             current["power_start"] = starts["power_start"]
         timings = last_eval["timings"] or {}
         params_str = ", ".join(f"{k}={v:.6g}" for k, v in current.items())
@@ -1015,7 +1027,7 @@ def main():
         fitted[name] = snap_value(fitted[name], name)
     summary_path = output_dir / "example_opti_fit.csv"
 
-    if optimize_power_start:
+    if joint_power_start:
         power_start = fitted["power_start"]
     else:
         power_start = starts["power_start"]
@@ -1089,8 +1101,16 @@ def main():
     print(f"[Runtime] section 6: write outputs: {t6 - t5:.2f} s")
 
     df_plot = df_out.copy()
-    df_plot.loc[~mask_fit, "Tf_out"] = np.nan
-    plot_fit_timeseries(df_plot, output_dir / "example_opti_fit.png")
+    if measurement_begin_ts is not None:
+        df_plot.loc[df_plot["timestamp"] < measurement_begin_ts, "Tf_out"] = np.nan
+    total_nfev = int(last_eval.get("nfev", 0) or 0) + stage1_nfev
+    loss_value = getattr(result, "fun", float("nan"))
+    note = (
+        f"T_g={fitted['T_g']:.6g} degC, k_s={fitted['k_s']:.6g} W/mK, "
+        f"cv_s={fitted['cv_s'] / 1.0e6:.6g} MJ/m³/K, k_g={fitted['k_g']:.6g} W/mK, "
+        f"power_start={power_start:.6g} W/m, loss={loss_value:.6g}, nfev={total_nfev}"
+    )
+    plot_fit_timeseries(df_plot, output_dir / "example_opti_fit.png", note=note)
 
     hours = np.arange(1, len(time) + 1) * dt / 3600.0
     plot_input(
@@ -1106,7 +1126,7 @@ def main():
         handle.write(f"Success: {result.success}\n")
         handle.write(f"Message: {result.message}\n")
         handle.write(f"Iterations (nit): {getattr(result, 'nit', 'n/a')}\n")
-        handle.write(f"Evaluations (nfev): {last_eval.get('nfev', getattr(result, 'nfev', 'n/a'))}\n")
+        handle.write(f"Evaluations (nfev): {total_nfev}\n")
         handle.write(f"Final loss: {getattr(result, 'fun', 'n/a')}\n")
         handle.write(f"Penalty weight: {penalty_weight}\n")
         handle.write(f"Optimize power_start: {optimize_power_start}\n")
@@ -1123,11 +1143,36 @@ def main():
                 value = value / 1.0e6
             unit = units.get(name, "")
             return f"{value:.6g} {unit}".rstrip()
+        warnings = []
+
+        def check_bound(name: str, value: float) -> None:
+            if name not in bounds:
+                return
+            low, high = bounds[name]
+            step = steps.get(name)
+            if step:
+                tol = step / 2.0
+            else:
+                tol = max(1e-9, 1e-6 * abs(value))
+            if abs(value - low) <= tol:
+                warnings.append(f"{name} at lower bound ({format_value(name, low)})")
+            if abs(value - high) <= tol:
+                warnings.append(f"{name} at upper bound ({format_value(name, high)})")
+
         handle.write("\nParameters:\n")
+        checked = set()
         for name in names:
             handle.write(f"- {name}: {format_value(name, fitted[name])}\n")
-        if not optimize_power_start:
+            check_bound(name, fitted[name])
+            checked.add(name)
+        if optimize_power_start and "power_start" not in checked:
             handle.write(f"- power_start (fixed): {format_value('power_start', power_start)}\n")
+            check_bound("power_start", power_start)
+            checked.add("power_start")
+        if not use_power_start and "power_start" not in checked:
+            handle.write(f"- power_start (fixed): {format_value('power_start', power_start)}\n")
+            check_bound("power_start", power_start)
+            checked.add("power_start")
         if "m_flow_start" in starts:
             handle.write(f"- m_flow_start (fixed): {format_value('m_flow_start', starts['m_flow_start'])}\n")
         handle.write("\nStart values:\n")
@@ -1138,6 +1183,10 @@ def main():
             low = format_value(key, value[0])
             high = format_value(key, value[1])
             handle.write(f"- {key}: [{low}, {high}]\n")
+        if warnings:
+            handle.write("\nWarnings:\n")
+            for warning in warnings:
+                handle.write(f"- {warning}\n")
         handle.write("\nSteps:\n")
         for key, value in steps.items():
             handle.write(f"- {key}: {format_value(key, value)}\n")
