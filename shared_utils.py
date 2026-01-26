@@ -236,7 +236,7 @@ def plot_borefield_cross_section(
 
 def plot_g_function(*, t_eskilson_grid, g_func, t_eskilson_req, out_path: Path):
     fig_g, ax_g = plt.subplots(1, 1, figsize=(9, 4))
-    ax_g.plot(t_eskilson_grid, g_func, color="tab:blue")
+    ax_g.plot(t_eskilson_grid, g_func, color="tab:blue", label="g-function (precalculation)")
     ax_g.set_xscale("log")
     ax_g.set_xlabel(r"$t_{\mathrm{eskilson}}$")
     ax_g.set_ylabel("g-Funktion")
@@ -244,7 +244,7 @@ def plot_g_function(*, t_eskilson_grid, g_func, t_eskilson_req, out_path: Path):
 
     t_req_min = np.nanmin(t_eskilson_req)
     t_req_max = np.nanmax(t_eskilson_req)
-    ax_g.axvspan(t_req_min, t_req_max, color="tab:orange", alpha=0.2, label="t_eskilson (Simulation)")
+    ax_g.axvspan(t_req_min, t_req_max, color="tab:orange", alpha=0.2, label="used range in simulation")
     ax_g.axvline(t_req_min, color="tab:orange", alpha=0.6, linestyle="--")
     ax_g.axvline(t_req_max, color="tab:orange", alpha=0.6, linestyle="--")
     ax_g.legend()
