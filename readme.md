@@ -10,11 +10,9 @@ Below you will find a **short overview**, then a **detailed description of `exam
 
 Because the synthetic load profile is fully known, the two examples provide full control over the optimization target. This makes them especially suitable for testing optimization cadence and behavior, including changes to start values, bounds, and step sizes.
 
-## Example 1 (Overview): `example_varflow.py`
+## Example 1 (Details): `example_varflow.py`
 
 `example_varflow.py` simulates a geothermal borefield with a time‑varying load and a variable mass flow rate. The borehole wall temperature is computed using the Claesson–Javed load aggregation method and an Eskilson g‑function. The script writes **synthetic measurements** that are used by `example_opti.py`.
-
-## Example 1 (Details): `example_varflow.py`
 
 ### Key Idea: g‑Function Independent of Material Parameters and Mass Flow
 
@@ -110,23 +108,6 @@ The load profile was created as an example/test case for demonstration. It is de
 
 For each month, the mass flow per borehole is calculated analytically so that the temperature difference ΔT matches the table above for the given load. If the load is zero, the mass flow is set to zero and the fluid temperatures (inlet and outlet) are, by definition, set to $T_b$.
 
-## Outputs
-
-Outputs are organized into subfolders (relative to the repo root):
-
-- `outputs/varflow`: simulation plots and measurements
-- `outputs/opti`: optimization results
-- `outputs/sensitivity`: sensitivity sweep outputs
-
-Plots from `example_varflow.py` are written to `outputs/varflow`:
-
-- `borefield_cross_section.png` (geometry only, no flow/material dependency)
-- `borefield_layout.png`
-- `g_function_eskilson.png`
-- `example_varflow_input.png`
-- `example_varflow_results.png`
-- `Rb_vs_mflow.png`
-
 ## Example 2 (Details): `example_opti.py`
 
 `example_opti.py` loads the synthetic measurements from `outputs/varflow/varflow_measurements.csv` and estimates
@@ -154,6 +135,35 @@ Outputs (in `outputs/opti`):
 - `example_opti_fit.png` (comparison plot)
 - `example_opti_input.png` (final input load and mass flow)
 - `example_opti_params.txt` (best‑fit parameters)
+
+### `run` parameters in `inputs/opti.json`
+
+- `measurement_begin`: Measurement window start date (plotting starts here; loss can exclude an initial buffer).
+- `max_iter`: Maximum Powell iterations for each optimization stage.
+- `optimize_power_start`: If true, use staged optimization with a dedicated `power_start` stage when applicable.
+- `penalty`: Enable/disable the regularization penalty on $T_g$, $k_s$, $c_{v,s}$, $k_g$.
+- `sensitivity_sweep`: Run 1D sensitivity sweep instead of optimization.
+- `sweep_points`: Number of points per parameter in the 1D sweep.
+- `sweep_2d_cv_s_k_s`: Enable 2D sweep for $c_{v,s}$ vs. $k_s$.
+- `sweep_2d_T_g_power_start`: Enable 2D sweep for $T_g$ vs. `power_start`.
+- `sweep_2d_points`: Grid size (per axis) for 2D sweeps.
+
+## Outputs
+
+Outputs are organized into subfolders (relative to the repo root):
+
+- `outputs/varflow`: simulation plots and measurements
+- `outputs/opti`: optimization results
+- `outputs/sensitivity`: sensitivity sweep outputs (plots and tables)
+
+Plots from `example_varflow.py` are written to `outputs/varflow`:
+
+- `borefield_cross_section.png` (geometry only, no flow/material dependency)
+- `borefield_layout.png`
+- `g_function_eskilson.png`
+- `example_varflow_input.png`
+- `example_varflow_results.png`
+- `Rb_vs_mflow.png`
 
 ## Runtime Measurement
 
