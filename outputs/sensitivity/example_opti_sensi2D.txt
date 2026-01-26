@@ -5,3 +5,6 @@ T_g_power_start, 0.116061, T_g, 11.6667, power_start, 6.66667, 10, "Fixed: k_s=2
 T_g_power_start, 0.116061, T_g, 11.6667, power_start, 6.66667, 10, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
 T_g_power_start, 0.245462, T_g, 11.25, power_start, 0, 5, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
 T_g_power_start, 0.124597, T_g, 11.8182, power_start, 8.18182, 12, "Fixed: k_s=2 W/mK, cv_s=2 MJ/m³/K, k_g=1 W/mK"
+k_s_cv_s, 0.0891883, k_s, 1.81818, cv_s, 4e+06, 12, "Fixed: T_g=12 degC, k_g=1 W/mK, power_start=15 W/m"
+k_s_cv_s, 0.212436, k_s, 1.75, cv_s, 4e+06, 5, "Fixed: T_g=12 degC, k_g=1 W/mK, power_start=15 W/m"
+k_s_cv_s, 0.0891883, k_s, 1.81818, cv_s, 4e+06, 12, "Fixed: T_g=12 degC, k_g=1 W/mK, power_start=15 W/m"

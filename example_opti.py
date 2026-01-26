@@ -377,6 +377,7 @@ def run_sensitivity_sweep_2d(
         ridge_max = (np.nanmax(z_rmse) - min_loss) / 20.0 + min_loss
         ridge_mask = z_rmse <= ridge_max
         ridge_line = None
+        ridge_points = None
         if np.any(ridge_mask):
             ridge_x = x_grid[ridge_mask]
             ridge_y = y_grid[ridge_mask]
@@ -386,6 +387,16 @@ def run_sensitivity_sweep_2d(
                 float(np.max(ridge_x)),
                 float(np.max(ridge_y)),
             )
+            ridge_points_list = []
+            for j, x_val in enumerate(x_vals):
+                col = z_rmse[:, j]
+                if not np.isfinite(col).any():
+                    continue
+                i_min = int(np.nanargmin(col))
+                if col[i_min] <= ridge_max:
+                    ridge_points_list.append((float(x_val), float(y_vals[i_min])))
+            if ridge_points_list:
+                ridge_points = np.array(ridge_points_list, dtype=float)
 
         if param_x == "cv_s":
             x_plot = x_grid / 1.0e6
@@ -396,6 +407,12 @@ def run_sensitivity_sweep_2d(
         else:
             y_plot = y_grid
 
+        if ridge_points is not None and (param_x == "cv_s" or param_y == "cv_s"):
+            ridge_points = ridge_points.copy()
+            if param_x == "cv_s":
+                ridge_points[:, 0] /= 1.0e6
+            if param_y == "cv_s":
+                ridge_points[:, 1] /= 1.0e6
         if ridge_line is not None and (param_x == "cv_s" or param_y == "cv_s"):
             rx_min, ry_min, rx_max, ry_max = ridge_line
             if param_x == "cv_s":
@@ -413,6 +430,7 @@ def run_sensitivity_sweep_2d(
             out_dir / f"sensitivity_2d_{tag}.png",
             note=note,
             ridge_line=ridge_line,
+            ridge_points=ridge_points,
         )
 
         summary_path = out_dir / "example_opti_sensi2D.txt"

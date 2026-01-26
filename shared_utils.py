@@ -450,6 +450,7 @@ def plot_sensitivity_2d(
     out_path: Path,
     note: str | None = None,
     ridge_line: tuple[float, float, float, float] | None = None,
+    ridge_points: np.ndarray | None = None,
 ):
     fig, ax = plt.subplots(1, 1, figsize=(7, 5))
     contour = ax.contourf(x_grid, y_grid, z_rmse, levels=15)
@@ -473,7 +474,9 @@ def plot_sensitivity_2d(
         ax.set_ylabel("k_s [W/mK]")
         ax.set_title("Sensitivity sweep: power_start vs k_s")
 
-    if ridge_line is not None:
+    if ridge_points is not None and len(ridge_points) > 1:
+        ax.plot(ridge_points[:, 0], ridge_points[:, 1], color="black", linewidth=1.5, label="ridge")
+    elif ridge_line is not None:
         x_min, y_min, x_max, y_max = ridge_line
         ax.plot([x_min, x_max], [y_min, y_max], color="black", linewidth=1.5, label="ridge")
     if note:

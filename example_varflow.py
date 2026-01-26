@@ -79,8 +79,9 @@ def main():
 
     # Ground properties
     ground_cfg = config.get("ground", {})
-    alpha = float(ground_cfg.get("alpha", 1.0e-6))
     k_s = float(ground_cfg.get("k_s", 2.0))
+    cv_s = float(ground_cfg.get("cv_s", 2.0)) * 1.0e6
+    alpha = k_s / cv_s
     T_g = float(ground_cfg.get("T_g", 12.0))
 
     # Grout properties
@@ -179,6 +180,7 @@ def main():
             "Tf_in": T_f_in,
             "Tf_out": T_f_out,
             "m_flow": m_flow_borehole_ts,
+            "q_b": q_b_per_m,
         }
     )
     df_measurements.to_csv(out_dir / "varflow_measurements.csv", index=False)
